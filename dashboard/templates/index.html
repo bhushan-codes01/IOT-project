@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11191d">
+  <title>AIoT Fire Emergency Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="AIoT Fire Emergency Monitor home">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span><strong>AIoT</strong><small>FIELD MONITOR</small></span>
+      </a>
+      <div class="topbar-right">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="poll-status">CONNECTING</span>
+        <time id="clock">--:--:--</time>
+      </div>
+    </header>
+
+    <section class="overview" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">ENVIRONMENTAL SAFETY SYSTEM / LIVE TELEMETRY</p>
+        <h1 id="page-title">Fire emergency monitor</h1>
+        <p class="lede">Sensor, radar, and camera signals in one operational view.</p>
+      </div>
+      <div class="alert-panel level-normal" id="alert-panel" role="status" aria-live="polite">
+        <span class="alert-icon" aria-hidden="true">!</span>
+        <div><span class="eyebrow">SYSTEM ASSESSMENT</span><strong id="fire-level">NORMAL</strong><small id="assessment-message">Waiting for sensor data</small></div>
+      </div>
+    </section>
+
+    <section class="section-heading">
+      <h2>Live conditions</h2>
+      <span>Refreshes every 2 seconds</span>
+    </section>
+    <section class="metric-grid" aria-label="Live sensor and alert metrics">
+      <article class="metric metric-temp">
+        <div class="metric-head"><span>TEMPERATURE</span><span class="metric-symbol" aria-hidden="true">°</span></div>
+        <p class="metric-value"><span id="temperature">0</span><small>°C</small></p>
+        <p class="metric-foot">Ambient sensor reading</p>
+      </article>
+      <article class="metric">
+        <div class="metric-head"><span>HUMIDITY</span><span class="metric-symbol" aria-hidden="true">%</span></div>
+        <p class="metric-value"><span id="humidity">0</span><small>%</small></p>
+        <p class="metric-foot">Relative humidity</p>
+      </article>
+      <article class="metric" id="radar-card">
+        <div class="metric-head"><span>RADAR PRESENCE</span><span class="metric-symbol" aria-hidden="true">R</span></div>
+        <p class="metric-state" id="human-radar">NO PRESENCE</p>
+        <p class="metric-foot">HLK-LD2410C / ESP32</p>
+      </article>
+      <article class="metric" id="camera-card">
+        <div class="metric-head"><span>CAMERA DETECTION</span><span class="metric-symbol" aria-hidden="true">C</span></div>
+        <p class="metric-state" id="human-camera">NO PERSON</p>
+        <p class="metric-foot">Camera <span id="camera-status">DISCONNECTED</span></p>
+      </article>
+      <article class="metric metric-alert" id="fire-card">
+        <div class="metric-head"><span>FIRE STATUS</span><span class="metric-symbol" aria-hidden="true">!</span></div>
+        <p class="metric-state" id="fire-status">NORMAL</p>
+        <p class="metric-foot">Prototype threshold assessment</p>
+      </article>
+      <article class="metric" id="buzzer-card">
+        <div class="metric-head"><span>BUZZER</span><span class="metric-symbol" aria-hidden="true">B</span></div>
+        <p class="metric-state" id="buzzer">OFF</p>
+        <p class="metric-foot">ESP32 output state</p>
+      </article>
+      <article class="metric" id="wifi-card">
+        <div class="metric-head"><span>WI-FI</span><span class="metric-symbol" aria-hidden="true">W</span></div>
+        <p class="metric-state" id="wifi-status">DISCONNECTED</p>
+        <p class="metric-foot" id="ip-address">IP: N/A</p>
+      </article>
+      <article class="metric" id="mqtt-card">
+        <div class="metric-head"><span>MQTT BROKER</span><span class="metric-symbol" aria-hidden="true">M</span></div>
+        <p class="metric-state" id="mqtt-status">DISCONNECTED</p>
+        <p class="metric-foot">TCP port 1883</p>
+      </article>
+      <article class="metric">
+        <div class="metric-head"><span>NETWORK LATENCY</span><span class="metric-symbol" aria-hidden="true">↔</span></div>
+        <p class="metric-value"><span id="latency">N/A</span><small id="latency-unit"></small></p>
+        <p class="metric-foot">TCP connect to MQTT broker</p>
+      </article>
+    </section>
+
+    <section class="lower-grid">
+      <div class="lower-panel">
+        <div class="section-heading"><h2>Recent events</h2><span>Latest first</span></div>
+        <ul id="event-list" class="event-list"><li class="empty-state">No sensor events received yet.</li></ul>
+      </div>
+      <aside class="lower-panel system-note">
+        <p class="eyebrow">DECISION MODEL</p>
+        <h2>Prototype rule, not a certified alarm</h2>
+        <p>Temperature near the configured threshold raises a warning. Reaching it raises an emergency state; a temperature reading alone does not scientifically prove a fire.</p>
+        <p class="note-foot">Last sensor update <time id="sensor-time">Waiting</time></p>
+      </aside>
+    </section>
+    <footer><span>AIoT FIRE EMERGENCY MONITOR</span><span>Local network dashboard · No video is transmitted</span></footer>
+  </main>
+</body>
+</html>
