@@ -1,5 +1,31 @@
 const $ = (id) => document.getElementById(id);
 const booleanText = (value, yes, no) => value ? yes : no;
+let soundEnabled = false;
+let buzzerActive = false;
+let alarmInterval = null;
+let alarmAudio = null;
+let alarmGain = null;
+
+function updateAlarmSound() {
+  if (!soundEnabled || !buzzerActive || !alarmAudio || !alarmGain) {
+    if (alarmInterval !== null) window.clearInterval(alarmInterval);
+    alarmInterval = null;
+    if (alarmGain && alarmAudio) alarmGain.gain.setTargetAtTime(0, alarmAudio.currentTime, 0.02);
+    return;
+  }
+  if (alarmInterval !== null) return;
+
+  const beep = () => {
+    const now = alarmAudio.currentTime;
+    alarmGain.gain.cancelScheduledValues(now);
+    alarmGain.gain.setValueAtTime(0, now);
+    alarmGain.gain.linearRampToValueAtTime(0.32, now + 0.015);
+    alarmGain.gain.setValueAtTime(0.32, now + 0.16);
+    alarmGain.gain.linearRampToValueAtTime(0, now + 0.2);
+  };
+  beep();
+  alarmInterval = window.setInterval(beep, 900);
+}
 
 function formatTimestamp(value) {
   if (!value) return 'Waiting';
@@ -24,6 +50,9 @@ function renderStatus(status) {
   $('mqtt-status').textContent = booleanText(status.mqtt_connected, 'CONNECTED', 'DISCONNECTED');
   $('sensor-time').textContent = formatTimestamp(status.timestamp);
   $('assessment-message').textContent = status.message || 'Waiting for sensor data';
+  renderMap(status);
+  buzzerActive = Boolean(status.buzzer);
+  updateAlarmSound();
 
   const level = String(status.fire_level || 'NORMAL').toLowerCase();
   $('fire-level').textContent = status.fire_level || 'NORMAL';
@@ -45,6 +74,34 @@ function renderStatus(status) {
   }
 }
 
+function renderMap(status) {
+  const map = $('environment-map');
+  const sensorConnected = Boolean(status.sensor_connected);
+  const presence = sensorConnected && Boolean(status.human_radar);
+  const distance = Number(status.human_distance_cm);
+  const hasDistance = presence && Number.isFinite(distance) && distance > 0;
+  const zone = hasDistance ? (distance < 150 ? 'near' : distance < 400 ? 'mid' : 'far') : 'unknown';
+  const radarStatus = status.radar_connected === null || status.radar_connected === undefined
+    ? 'UNKNOWN'
+    : booleanText(status.radar_connected, 'CONNECTED', 'DISCONNECTED');
+
+  map.dataset.zone = zone;
+  map.dataset.presence = String(presence);
+  map.dataset.level = status.fire_level || 'NORMAL';
+  $('map-radar-status').textContent = `RADAR ${radarStatus}`;
+  $('map-person').hidden = !presence;
+  $('map-person-label').textContent = hasDistance
+    ? `HUMAN · ${zone.toUpperCase()} · ${Math.round(distance)} CM`
+    : 'HUMAN DETECTED · RANGE UNAVAILABLE';
+  $('map-range').textContent = hasDistance
+    ? `RANGE: ${Math.round(distance)} CM · ${zone.toUpperCase()} BAND`
+    : presence ? 'RANGE: UNAVAILABLE' : 'RANGE: NO TARGET';
+
+  const source = status.sensor_device || 'SENSOR';
+  $('device-status').textContent = `${source}: ${sensorConnected ? 'ONLINE' : 'OFFLINE'}`;
+  $('device-seen').textContent = `LAST SEEN: ${formatTimestamp(status.last_seen)}`;
+}
+
 async function refresh() {
   try {
     const [statusResponse, networkResponse] = await Promise.all([
@@ -55,8 +112,8 @@ async function refresh() {
     const status = await statusResponse.json();
     const network = await networkResponse.json();
     renderStatus({ ...status, ...network });
-    $('poll-status').textContent = 'LIVE';
-    $('poll-status').dataset.state = 'live';
+    $('poll-status').textContent = status.demo_mode ? 'DEMO LIVE' : 'LIVE';
+    $('poll-status').dataset.state = status.demo_mode ? 'demo' : 'live';
   } catch {
     $('poll-status').textContent = 'API OFFLINE';
     $('poll-status').dataset.state = 'offline';
@@ -104,3 +161,39 @@ tickClock();
 window.setInterval(refresh, 2000);
 window.setInterval(refreshEvents, 10000);
 window.setInterval(tickClock, 1000);
+
+$('sound-toggle').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  if (soundEnabled) {
+    soundEnabled = false;
+  } else {
+    const AudioContextType = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextType) {
+      button.textContent = 'SOUND N/A';
+      button.disabled = true;
+      return;
+    }
+    try {
+      alarmAudio = alarmAudio || new AudioContextType();
+      await alarmAudio.resume();
+      if (!alarmGain) {
+        const oscillator = alarmAudio.createOscillator();
+        alarmGain = alarmAudio.createGain();
+        oscillator.type = 'square';
+        oscillator.frequency.value = 880;
+        alarmGain.gain.value = 0;
+        oscillator.connect(alarmGain);
+        alarmGain.connect(alarmAudio.destination);
+        oscillator.start();
+      }
+      soundEnabled = true;
+    } catch {
+      button.textContent = 'SOUND N/A';
+      return;
+    }
+  }
+  button.textContent = soundEnabled ? 'SOUND ON' : 'SOUND OFF';
+  button.setAttribute('aria-pressed', String(soundEnabled));
+  button.title = soundEnabled ? 'Disable browser buzzer sound' : 'Enable browser buzzer sound';
+  updateAlarmSound();
+});

@@ -11,7 +11,8 @@ A Windows-first college-project prototype combining ESP32 environmental telemetr
 - Repeatable NORMAL, WARNING, and EMERGENCY simulator scenarios.
 - YOLO person detection from a local USB webcam, with automatic CPU fallback and metadata-only MQTT publishing.
 - Network interface/IP status and measured TCP connection time to the MQTT broker. Packet loss is honestly reported as `N/A`.
-- ESP32 firmware for DHT11/DHT22, buzzer, Wi-Fi, and MQTT; LD2410C UART integration point is explicit and not represented as a completed parser.
+- ESP32 firmware for DHT11/DHT22, LD2410C UART parsing, local buzzer control, Wi-Fi, and MQTT telemetry.
+- A 2D range-zone dashboard view; it does not claim bearing or exact person coordinates.
 
 ## Architecture and data flow
 
@@ -65,7 +66,7 @@ AIoT-Fire-Emergency-System/
 - Windows 10/11 and Python 3.12 (recommended; Python 3.10+ may work with compatible wheels).
 - Mosquitto MQTT broker, installed separately.
 - For vision: a laptop/PC USB webcam. A GPU is optional; CPU inference is supported.
-- For hardware: ESP32 DevKit, DHT11 or DHT22, HLK-LD2410C radar, and a suitable buzzer/driver.
+- For hardware: ESP32 DevKit, DHT11 or DHT22, HLK-LD2410C radar, and a suitable active-high buzzer driver.
 - Arduino IDE 2.x for the ESP32 firmware.
 
 Python dependencies are declared in `requirements.txt`: Flask, Paho MQTT, OpenCV, Ultralytics, NumPy, Pillow, python-dotenv, psutil, requests, and pytest. Ultralytics may install PyTorch as a dependency; its first model run downloads the configured small model (`yolo11n.pt`). Allow disk space and network access for that one-time setup.
@@ -138,10 +139,10 @@ The detector opens camera index `0`, draws boxes, and exits on `Q`. Set `CAMERA_
 ## ESP32 connection
 
 1. Install Arduino IDE 2.x and the Espressif ESP32 board support using the Boards Manager.
-2. Install **PubSubClient** by Nick O'Leary and **DHT sensor library** by Adafruit (including Adafruit Unified Sensor) through Library Manager.
-3. Copy `esp32/esp32_fire_monitor/secrets.example.h` to `secrets.h` in that directory. Set Wi-Fi SSID/password, the PC's reachable LAN IPv4 address, and broker port. `secrets.h` is ignored by Git.
+2. Install **PubSubClient** by Nick O'Leary, **DHT sensor library** by Adafruit (including **Adafruit Unified Sensor**), and **ld2410** by ncmreynolds from Arduino Library Manager. The firmware calls that library's `begin`, `read`, `isConnected`, presence, moving-target, and stationary-target APIs.
+3. Copy `esp32/esp32_fire_monitor/secrets.example.h` to `secrets.h` in that directory. Set Wi-Fi SSID/password, the PC's reachable LAN IPv4 address, broker port, and the emergency temperature threshold. `secrets.h` is ignored by Git.
 4. Open `esp32_fire_monitor.ino`, select the ESP32 DevKit board and serial port, then compile/upload. Change `SENSOR_DHT_TYPE` from `DHT11` to `DHT22` if needed.
-5. Monitor serial at 115200 baud. Firmware publishes every two seconds to `fire/emergency/sensor`. The threshold in this starter firmware is `50°C`; keep it aligned with `TEMPERATURE_THRESHOLD` in `.env`.
+5. Monitor serial at 115200 baud. Confirm the LD2410C connection message, then watch for JSON publications every two seconds on `fire/emergency/sensor`. The firmware reports `presence`, radar connection, moving/stationary distance and energy, temperature, humidity, alarm, and uptime. Keep `FIRE_THRESHOLD_C` in `secrets.h` aligned with `TEMPERATURE_THRESHOLD` in `.env`.
 
 Do not connect the ESP32 broker host to `localhost`; use the PC's LAN IP. Routers may isolate Wi-Fi clients, so confirm reachability and firewall rules if the board cannot connect.
 
@@ -154,14 +155,18 @@ Disconnect power while wiring. Check the exact breakout-board voltage/current sp
 | DHT11/DHT22 VCC | 3.3V (check breakout requirements) |
 | DHT GND | ESP32 GND |
 | DHT DATA | GPIO 4; add pull-up if the module does not include one |
-| Buzzer driver input | GPIO 25 |
-| Buzzer/driver ground | ESP32 common GND |
+| Active-high buzzer driver input | GPIO 25 |
+| Buzzer driver ground | ESP32 common GND; power the buzzer through a suitable driver |
 | LD2410C TX | ESP32 RX GPIO 16 (crossed) |
 | LD2410C RX | ESP32 TX GPIO 17 (crossed) |
 | LD2410C GND | ESP32 GND |
 | LD2410C power | Use the module's specified supply; verify logic levels before wiring UART |
 
-The firmware initializes UART2 at 256000 baud, RX=16/TX=17. It deliberately does not implement a guessed LD2410C parser: `readRadarPresence()` drains incoming bytes and returns false. Integrate a verified LD2410 library/parser there before treating radar readings as real. Until then, simulated radar and camera presence still exercise the software path. Confirm your specific LD2410C board's voltage and UART configuration from its datasheet before applying power.
+The OV2640 camera is not connected to this firmware. SDA/SCL are only camera-control lines; full image capture requires the exact ESP32 camera board's D0-D7, XCLK, PCLK, VSYNC, HREF, SCCB, and power/reset mapping plus a compatible driver. Do not copy an ESP32-CAM pin map to a different board. The external antenna is only for ESP32 boards fitted with a compatible antenna connector; leave board antenna hardware unchanged otherwise.
+
+The firmware uses the `ld2410.h` parser API from **ld2410 by ncmreynolds** and continuously calls `radar.read()` on UART2 at 256000 baud (RX=16/TX=17). It publishes the parser's presence and target distance/energy when available. That library documents its common LD2410 breakout as requiring 5 V or higher power with 3.3 V UART logic; verify the exact LD2410C board/datasheet before applying power. The backend keeps the established `fire/emergency/sensor` topic and accepts both `presence` and the simulator's older `human_detected` field.
+
+The dashboard's 2D map shows a near/mid/far range band based on the radar distance, with the marker centered only for display. LD2410C does not provide target direction, so this is not a measured floor-plan coordinate. The OV2640 diagram's SDA/SCL pins are camera-control lines only; they are insufficient for image capture. This project has no ESP32 OV2640 driver or verified camera pin map. Its optional YOLO camera feature uses a separate laptop USB webcam and sends detection metadata only.
 
 ## Fire decision rule
 
@@ -174,6 +179,21 @@ See `network/mqtt_topics.md` for IoT, Wi-Fi, IP, client/server, MQTT broker, pub
 ## Logs and tests
 
 Sensor events are JSONL in `data/logs/events.jsonl`, rotated at 1 MB with three backups. The log route exposes only the latest 100 entries.
+
+### Hardware demonstration checklist
+
+1. Power the ESP32 and confirm the startup banner and Wi-Fi connection in Serial Monitor.
+2. Confirm DHT11 temperature and humidity are plausible and update about every two seconds.
+3. Confirm the LD2410C connection message; move into and out of its configured field of view.
+4. Confirm serial/MQTT telemetry changes `presence` with the real sensor and reports target distance/energy when supplied by the parser.
+5. Verify buzzer output with a safe, controlled temperature test at the configured threshold; never use an actual fire.
+6. Confirm the ESP32 reconnects after Wi-Fi is interrupted.
+7. Start Mosquitto and confirm the ESP32 connects to the broker's computer LAN address.
+8. Run `mosquitto_sub -h localhost -p 1883 -t fire/emergency/sensor -v` and check JSON arrives every two seconds.
+9. Start Flask and verify `GET /api/status` shows sensor values, radar data, and `esp32_connected: true` when the ESP32 is publishing.
+10. Open the dashboard and confirm temperature, humidity, radar, alarm, broker, and last-seen states update.
+11. Move closer/farther within radar range and confirm the map band changes; it represents range only, not direction or exact coordinates.
+12. Stop/restart Mosquitto or disconnect Wi-Fi; verify dashboard freshness goes offline after 10 seconds and returns after publishing resumes.
 
 ```powershell
 venv\Scripts\activate
@@ -190,9 +210,9 @@ Tests cover fire-rule boundaries, MQTT offline behavior, and network status/late
 - **Webcam unavailable:** Check `CAMERA_INDEX`, OS camera permissions, and whether another app has locked it.
 - **YOLO model download/inference fails:** Confirm internet access for the first model download, available disk space, then retry on CPU. GPU is optional.
 - **DHT read failed:** Check GPIO 4, power, ground, pull-up, and selected DHT model type.
-- **Radar always reports absent:** This is expected until a verified parser adapter replaces the documented stub.
+- **Radar not connected or always absent:** Verify the `ld2410.h`-compatible library is installed, UART TX/RX are crossed to GPIO 16/17, common ground and module power are correct, and sensor UART baud/configuration matches the library.
 - **No dependency wheel:** Use Python 3.12 64-bit and rerun `python -m pip install -r requirements.txt` inside the venv.
 
 ## Limitations and future improvements
 
-This is a prototype for coursework and controlled demonstrations only. It lacks certified fire sensing, authenticated/encrypted broker configuration, reliable LD2410C parsing, persistent database storage, camera privacy controls beyond local processing, and deployment hardening. The laptop webcam must run on the same broker network. Network latency sampling is TCP connection setup time and packet loss remains unmeasured. There is no LiDAR/depth sensor, so the system does not provide 3D environmental mapping. Future work can add verified radar parsing, multi-sensor calibrated alarm logic, authenticated TLS MQTT, role-based dashboard access, database retention, and optional depth/LiDAR hardware.
+This is a prototype for coursework and controlled demonstrations only. It is not a certified fire alarm or life-safety system. It lacks certified fire sensing, authenticated/encrypted broker configuration, persistent database storage, camera privacy controls beyond local processing, and deployment hardening. The laptop webcam must run on the same broker network. Network latency sampling is TCP connection setup time and packet loss remains unmeasured. There is no LiDAR/depth sensor, so the system does not provide 3D environmental mapping. The radar parser/library and live hardware must be verified on the exact sensor and board before relying on measurements.

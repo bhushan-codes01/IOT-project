@@ -12,6 +12,12 @@ class StateStore:
             "temperature": 0,
             "humidity": 0,
             "human_radar": False,
+            "radar_connected": None,
+            "human_distance_cm": None,
+            "moving_distance_cm": None,
+            "stationary_distance_cm": None,
+            "moving_energy": None,
+            "stationary_energy": None,
             "human_camera": False,
             "camera_connected": False,
             "fire_status": False,
@@ -24,6 +30,8 @@ class StateStore:
             "latency_ms": None,
             "packet_loss": "N/A",
             "timestamp": "",
+            "sensor_received_at": 0.0,
+            "sensor_device": "UNKNOWN",
             "message": "Waiting for sensor data",
         }
 

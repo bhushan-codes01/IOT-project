@@ -18,6 +18,7 @@
       <div class="topbar-right">
         <span class="live-dot" aria-hidden="true"></span>
         <span id="poll-status">CONNECTING</span>
+        <button id="sound-toggle" type="button" aria-pressed="false" title="Enable browser buzzer sound">SOUND OFF</button>
         <time id="clock">--:--:--</time>
       </div>
     </header>
@@ -84,6 +85,26 @@
         <p class="metric-value"><span id="latency">N/A</span><small id="latency-unit"></small></p>
         <p class="metric-foot">TCP connect to MQTT broker</p>
       </article>
+    </section>
+
+    <section class="map-section" aria-labelledby="map-title">
+      <div class="section-heading">
+        <h2 id="map-title">2D environmental map</h2>
+        <span id="map-radar-status">RADAR STATUS UNKNOWN</span>
+      </div>
+      <div class="environment-map" id="environment-map" data-zone="unknown" data-presence="false">
+        <div class="map-zone map-zone-far"><span>FAR RANGE</span></div>
+        <div class="map-zone map-zone-mid"><span>MID RANGE</span></div>
+        <div class="map-zone map-zone-near"><span>NEAR RANGE</span></div>
+        <div class="map-person" id="map-person" hidden><span class="map-person-dot" aria-hidden="true"></span><span id="map-person-label">HUMAN DETECTED</span></div>
+        <div class="map-device" id="map-device"><span class="map-device-mark" aria-hidden="true">E</span><span>ESP32 / LD2410C</span></div>
+      </div>
+      <div class="map-meta">
+        <span id="map-range">RANGE: --</span>
+        <span id="device-status">ESP32: OFFLINE</span>
+        <span id="device-seen">LAST SEEN: WAITING</span>
+      </div>
+      <p class="map-note">Range bands only; the LD2410C does not report target direction. Marker placement is illustrative, not a coordinate or camera view.</p>
     </section>
 
     <section class="lower-grid">

@@ -8,7 +8,7 @@
 | `fire/emergency/alert` | Backend to subscribers | Rising-edge prototype emergency alert |
 | `fire/emergency/network` | Device to backend | Optional device network diagnostics |
 
-Sensor JSON carries `temperature`, `humidity`, `human_detected`, `device`, and an ISO timestamp. Camera messages carry `source: camera`, `human_camera`, `camera_connected`, and timestamp. Camera frames are not sent. MQTT QoS 1 is used for backend publications; the simulator also publishes at QoS 1.
+ESP32 sensor JSON on `fire/emergency/sensor` carries `temperature`, `humidity`, `presence`, `radar_connected`, `moving_distance`, `stationary_distance`, `moving_energy`, `stationary_energy`, `alarm`, `status`, `device`, and `uptime_ms`. The backend also accepts the simulator's legacy `human_detected` field. ESP32 uptime is not wall-clock time; the backend assigns the receive timestamp used by the dashboard and JSONL event log. Camera messages carry `source: camera`, `human_camera`, `camera_connected`, and an ISO timestamp. Camera frames are not sent. MQTT QoS 1 is used for backend publications; the simulator also publishes at QoS 1.
 
 ## Computer Networks concepts
 

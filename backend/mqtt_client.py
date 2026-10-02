@@ -2,6 +2,7 @@
 import json
 import logging
 import math
+import time
 from typing import Any, Callable
 
 import paho.mqtt.client as mqtt
@@ -19,6 +20,24 @@ from backend.fire_detection import assess_fire_risk
 from backend.utils import log_event, utc_timestamp
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes", "on"}
+    return bool(value)
+
+
+def _optional_nonnegative_int(value: Any, field: str) -> int | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{field} must be a non-negative number") from error
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"{field} must be a non-negative finite number")
+    return int(number)
 
 
 class MQTTService:
@@ -93,19 +112,38 @@ class MQTTService:
         humidity = float(payload.get("humidity", 0))
         if not math.isfinite(temperature) or not math.isfinite(humidity):
             raise ValueError("temperature and humidity must be finite numbers")
-        human_detected = bool(payload.get("human_detected", payload.get("human_radar", False)))
+        human_detected = _as_bool(payload.get(
+            "presence", payload.get("human_detected", payload.get("human_radar", False))
+        ))
+        moving_distance = _optional_nonnegative_int(payload.get("moving_distance"), "moving_distance")
+        stationary_distance = _optional_nonnegative_int(payload.get("stationary_distance"), "stationary_distance")
+        moving_energy = _optional_nonnegative_int(payload.get("moving_energy"), "moving_energy")
+        stationary_energy = _optional_nonnegative_int(payload.get("stationary_energy"), "stationary_energy")
+        human_distance = next(
+            (distance for distance in (moving_distance, stationary_distance) if distance),
+            None,
+        )
         assessment = assess_fire_risk(temperature, TEMPERATURE_THRESHOLD)
-        timestamp = str(payload.get("timestamp") or utc_timestamp())
+        timestamp = utc_timestamp()
+        device = str(payload.get("device") or "UNKNOWN")
         previous = self.state_store.snapshot()
         values = {
             "temperature": temperature,
             "humidity": humidity,
             "human_radar": human_detected,
+            "radar_connected": _as_bool(payload["radar_connected"]) if "radar_connected" in payload else None,
+            "human_distance_cm": human_distance,
+            "moving_distance_cm": moving_distance,
+            "stationary_distance_cm": stationary_distance,
+            "moving_energy": moving_energy,
+            "stationary_energy": stationary_energy,
             "fire_status": assessment.fire_status,
             "fire_level": assessment.level.value,
             "buzzer": assessment.fire_status,
             "mqtt_connected": self.connected,
             "timestamp": timestamp,
+            "sensor_received_at": time.time(),
+            "sensor_device": device,
             "message": assessment.message,
         }
         self.state_store.update(values)
