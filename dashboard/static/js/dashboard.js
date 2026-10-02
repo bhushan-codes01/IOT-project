@@ -5,6 +5,11 @@ let buzzerActive = false;
 let alarmInterval = null;
 let alarmAudio = null;
 let alarmGain = null;
+let cameraBaseUrl = '';
+let cameraStreamActive = false;
+let cameraRefreshTimer = null;
+let cameraRefreshSeconds = 5;
+const MAP_MAX_RANGE_CM = 600;
 
 function booleanText(value, yes, no) {
   return value ? yes : no;
@@ -63,31 +68,31 @@ function setValueTone(id, level) {
   value.classList.add(level === 'EMERGENCY' ? 'red' : level === 'WARNING' ? 'amber' : 'green');
 }
 
-function createMarker(type, symbol, label, left, top) {
-  const marker = document.createElement('div');
-  marker.className = `map-marker ${type}`;
-  marker.style.left = `${left}%`;
-  marker.style.top = `${top}%`;
-  const dot = document.createElement('span');
-  dot.className = 'map-marker-dot';
-  dot.textContent = symbol;
-  const text = document.createElement('span');
-  text.className = 'map-marker-label';
-  text.textContent = label;
-  marker.append(dot, text);
-  return marker;
-}
-
 function renderMap(status, level) {
-  const markers = $('map-markers');
-  markers.replaceChildren();
+  window.lastRadarStatus = status;
+  window.lastRadarLevel = level;
+  const canvas = $('radar-map');
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  canvas.width = Math.round(bounds.width * pixelRatio);
+  canvas.height = Math.round(bounds.height * pixelRatio);
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 
+  const width = bounds.width;
+  const height = bounds.height;
   const espOnline = Boolean(status.esp32_connected);
   const presence = Boolean(status.sensor_connected && status.human_radar);
   const distance = finiteNumber(status.human_distance_cm, NaN);
   const hasDistance = presence && Number.isFinite(distance) && distance > 0;
   const zone = hasDistance ? (distance >= 400 ? 'FAR' : distance >= 150 ? 'MID' : 'NEAR') : '';
-  const markerTop = zone === 'FAR' ? 16.7 : zone === 'NEAR' ? 83.3 : 50;
+  const centerX = width / 2;
+  const centerY = height / 2 + 8;
+  const radius = Math.max(30, Math.min(width * 0.42, height / 2 - 22));
+  const scale = radius / MAP_MAX_RANGE_CM;
+  const ringColor = level === 'EMERGENCY' ? '#ff5757' : level === 'WARNING' ? '#ffad42' : '#54f078';
 
   $('map-container').dataset.level = level;
   const radarConnected = status.radar_connected;
@@ -97,21 +102,164 @@ function renderMap(status, level) {
   setText('map-radar-status', `RADAR: ${radarState}`);
   $('map-radar-status').className = `map-radar-status ${presence ? 'detected' : radarConnected === false ? 'disconnected' : 'unknown'}`;
 
-  markers.append(createMarker('esp', 'E', 'ESP32 / LD2410C', 50, 83.3));
-  if (level !== 'NORMAL') {
-    markers.append(createMarker('fire', '!', 'HIGH TEMP', 15, 16.7));
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = '#050a06';
+  context.fillRect(0, 0, width, height);
+  context.strokeStyle = 'rgba(84, 240, 120, 0.08)';
+  context.lineWidth = 1;
+  for (let x = 0; x <= width; x += 32) {
+    context.beginPath(); context.moveTo(x, 0); context.lineTo(x, height); context.stroke();
   }
-  if (presence) {
-    markers.append(createMarker('human', '•', 'HUMAN', 61, markerTop));
+  for (let y = 0; y <= height; y += 32) {
+    context.beginPath(); context.moveTo(0, y); context.lineTo(width, y); context.stroke();
   }
 
+  context.font = '10px "Share Tech Mono", Consolas, monospace';
+  context.textBaseline = 'middle';
+  for (const ringCm of [150, 300, 450, MAP_MAX_RANGE_CM]) {
+    const ringRadius = ringCm * scale;
+    context.beginPath();
+    context.arc(centerX, centerY, ringRadius, 0, Math.PI * 2);
+    context.strokeStyle = 'rgba(124, 184, 138, 0.48)';
+    context.setLineDash([4, 5]);
+    context.stroke();
+    context.setLineDash([]);
+    context.fillStyle = '#75957c';
+    context.textAlign = 'left';
+    context.fillText(`${ringCm} cm`, centerX + 7, centerY - ringRadius + 11);
+  }
+
+  if (hasDistance) {
+    const measuredRadius = clamp(distance, 0, MAP_MAX_RANGE_CM) * scale;
+    context.beginPath();
+    context.arc(centerX, centerY, measuredRadius, 0, Math.PI * 2);
+    context.strokeStyle = ringColor;
+    context.lineWidth = 2;
+    context.setLineDash([]);
+    context.stroke();
+    context.fillStyle = ringColor;
+    context.textAlign = 'center';
+    context.fillText(`MEASURED RANGE ${Math.round(distance)} CM${distance > MAP_MAX_RANGE_CM ? ' (RING CLAMPED)' : ''}`, centerX, Math.max(16, centerY - measuredRadius - 13));
+  } else if (presence) {
+    context.fillStyle = '#ffad42';
+    context.textAlign = 'center';
+    context.fillText('TARGET DETECTED · DISTANCE UNAVAILABLE', centerX, 25);
+  } else {
+    context.fillStyle = '#75957c';
+    context.textAlign = 'center';
+    context.fillText(radarConnected === false ? 'RADAR DISCONNECTED' : 'NO TARGET DETECTED', centerX, 25);
+  }
+
+  context.beginPath();
+  context.arc(centerX, centerY, 9, 0, Math.PI * 2);
+  context.fillStyle = '#20c94d';
+  context.fill();
+  context.strokeStyle = '#b8ffd0';
+  context.lineWidth = 2;
+  context.stroke();
+  context.fillStyle = '#d8eadb';
+  context.textAlign = 'center';
+  context.fillText('RADAR', centerX, centerY + 20);
+  canvas.setAttribute('aria-label', hasDistance
+    ? `Radar detected a target at ${Math.round(distance)} centimeters. The range ring has no directional information.`
+    : presence ? 'Radar detected a target but has no distance measurement.' : 'No radar target detected.');
+
   setText('range-val', hasDistance ? `${Math.round(distance)} CM · ${zone} BAND` : presence ? 'RANGE UNAVAILABLE' : 'NO TARGET');
+  const measurementLabel = (range, energy) => {
+    const measured = finiteNumber(range, NaN);
+    if (!Number.isFinite(measured) || measured <= 0) return 'NO TARGET';
+    const confidence = finiteNumber(energy, NaN);
+    return `${Math.round(measured)} CM · ENERGY ${Number.isFinite(confidence) ? Math.round(confidence) : '--'}`;
+  };
+  setText('radar-detail', `MOVING: ${measurementLabel(status.moving_distance_cm, status.moving_energy)} · STATIONARY: ${measurementLabel(status.stationary_distance_cm, status.stationary_energy)}`);
   const espStatus = $('esp-status-cell').querySelector('strong');
   espStatus.textContent = espOnline ? 'ONLINE' : 'OFFLINE';
   espStatus.className = espOnline ? 'connected' : 'disconnected';
   const hasPublisher = status.sensor_device && status.sensor_device !== 'UNKNOWN';
   const lastSeen = hasPublisher ? formatTimestamp(status.last_seen, true) : 'WAITING';
   setText('last-seen', hasPublisher && !status.sensor_connected ? `OFFLINE · ${lastSeen}` : lastSeen);
+}
+
+function setCameraState(label, state) {
+  setText('camera-feed-state', label);
+  $('camera-feed-state').className = `camera-state ${state}`;
+}
+
+function showCameraPlaceholder(message) {
+  $('camera-placeholder').hidden = false;
+  setText('camera-placeholder', message);
+  $('camera-image').hidden = true;
+}
+
+function snapshotUrl() {
+  return `${cameraBaseUrl}/capture?t=${Date.now()}`;
+}
+
+function refreshCameraImage() {
+  if (!cameraBaseUrl || cameraStreamActive) return;
+  setCameraState('CAPTURING IMAGE', 'unknown');
+  showCameraPlaceholder('Requesting a JPEG image from the ESP32-CAM...');
+  $('camera-image').src = snapshotUrl();
+}
+
+function configureCamera(status) {
+  const nextBaseUrl = String(status.camera_base_url || '').replace(/\/$/, '');
+  const changed = nextBaseUrl !== cameraBaseUrl;
+  cameraBaseUrl = nextBaseUrl;
+  cameraRefreshSeconds = clamp(finiteNumber(status.camera_refresh_seconds, 5), 2, 60);
+  const configured = Boolean(cameraBaseUrl);
+  $('capture-button').disabled = !configured;
+  $('refresh-image-button').disabled = !configured;
+  $('stream-toggle-button').disabled = !configured;
+  setText('camera-address', configured ? `CAMERA: ${cameraBaseUrl}` : 'CAMERA: NOT CONFIGURED');
+
+  if (!configured) {
+    stopCameraStream(false);
+    if (cameraRefreshTimer !== null) window.clearInterval(cameraRefreshTimer);
+    cameraRefreshTimer = null;
+    showCameraPlaceholder('Set CAMERA_BASE_URL in .env to display images from the ESP32-CAM.');
+    setCameraState('CAMERA NOT CONFIGURED', 'unknown');
+    return;
+  }
+
+  if (changed || cameraRefreshTimer === null) {
+    stopCameraStream(false);
+    showCameraPlaceholder('Waiting for an image from the camera board...');
+    setCameraState('WAITING FOR CAMERA', 'unknown');
+    if (cameraRefreshTimer !== null) window.clearInterval(cameraRefreshTimer);
+    cameraRefreshTimer = window.setInterval(refreshCameraImage, cameraRefreshSeconds * 1000);
+    refreshCameraImage();
+  }
+}
+
+function stopCameraStream(refreshSnapshot = true) {
+  cameraStreamActive = false;
+  $('capture-button').disabled = !cameraBaseUrl;
+  $('refresh-image-button').disabled = !cameraBaseUrl;
+  $('stream-toggle-button').disabled = !cameraBaseUrl;
+  $('stream-toggle-button').setAttribute('aria-pressed', 'false');
+  setText('stream-toggle-button', 'Start Live Stream');
+  if (cameraBaseUrl) {
+    $('camera-image').src = '';
+    if (refreshSnapshot) refreshCameraImage();
+  }
+}
+
+function toggleCameraStream() {
+  if (!cameraBaseUrl) return;
+  if (cameraStreamActive) {
+    stopCameraStream();
+    return;
+  }
+  cameraStreamActive = true;
+  $('capture-button').disabled = true;
+  $('refresh-image-button').disabled = true;
+  $('camera-image').src = `${cameraBaseUrl}/stream`;
+  $('camera-image').hidden = false;
+  $('camera-placeholder').hidden = true;
+  $('stream-toggle-button').setAttribute('aria-pressed', 'true');
+  setText('stream-toggle-button', 'Stop Live Stream');
+  setCameraState('CONNECTING TO STREAM', 'unknown');
 }
 
 function renderStatus(status, network) {
@@ -187,6 +335,7 @@ function renderStatus(status, network) {
   buzzerActive = buzzer;
   updateAlarmSound();
   renderMap(status, level);
+  configureCamera(status);
 }
 
 function renderEvents(events) {
@@ -214,6 +363,28 @@ function renderEvents(events) {
     list.append(item);
   }
 }
+
+$('camera-image').addEventListener('load', () => {
+  $('camera-image').hidden = false;
+  $('camera-placeholder').hidden = true;
+  setCameraState(cameraStreamActive ? 'LIVE STREAM CONNECTED' : 'IMAGE RECEIVED', 'connected');
+});
+
+$('camera-image').addEventListener('error', () => {
+  if (!cameraBaseUrl) return;
+  cameraStreamActive = false;
+  $('capture-button').disabled = false;
+  $('refresh-image-button').disabled = false;
+  $('stream-toggle-button').disabled = false;
+  $('stream-toggle-button').setAttribute('aria-pressed', 'false');
+  setText('stream-toggle-button', 'Start Live Stream');
+  showCameraPlaceholder('Camera request failed. Check the camera IP, Wi-Fi, and that the camera server is running.');
+  setCameraState('CAMERA UNREACHABLE', 'disconnected');
+});
+
+$('capture-button').addEventListener('click', refreshCameraImage);
+$('refresh-image-button').addEventListener('click', refreshCameraImage);
+$('stream-toggle-button').addEventListener('click', toggleCameraStream);
 
 async function refresh() {
   try {
@@ -252,6 +423,9 @@ tickClock();
 window.setInterval(refresh, 2000);
 window.setInterval(refreshEvents, 10000);
 window.setInterval(tickClock, 1000);
+window.addEventListener('resize', () => {
+  if (window.lastRadarStatus) renderMap(window.lastRadarStatus, window.lastRadarLevel || 'NORMAL');
+});
 
 $('sound-toggle').addEventListener('click', async (event) => {
   const button = event.currentTarget;

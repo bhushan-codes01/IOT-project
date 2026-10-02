@@ -48,7 +48,7 @@
 
 ## Overview
 
-This Windows-first college-project prototype brings together ESP32 sensor telemetry, MQTT messaging, a Python/Flask dashboard, laptop USB webcam person detection with YOLO, and host network measurements. The software can also be demonstrated without hardware by publishing reproducible sensor-simulator scenarios.
+This Windows-first college-project prototype brings together ESP32 sensor telemetry, MQTT messaging, a Python/Flask dashboard, an optional ESP32-CAM OV2640 for JPEG visual monitoring, optional laptop USB webcam person detection with YOLO, and host network measurements. The software can also be demonstrated without hardware by publishing reproducible sensor-simulator scenarios.
 
 The project name refers to environmental mapping, but **the current visualization is 2D**. It is a range-zone display, not 3D mapping, a measured floor plan, or a certified detection system.
 
@@ -57,13 +57,14 @@ DHT11/DHT22 +-------+
                     +--> ESP32 -- Wi-Fi/TCP/MQTT --> Mosquitto --> Python backend
 HLK-LD2410C +-------+                                      |          +-- fire rule + JSONL logs
                                                            |          +-- host network monitoring
+ESP32-CAM / OV2640 -- HTTP JPEG snapshot or MJPEG stream --> Flask dashboard
 USB webcam --> OpenCV --> YOLO --> detection flag ----------+          +-- Flask API + dashboard
 Simulator --------------------- MQTT sensor topic ---------------------+
 
 ESP32 buzzer output <-- local temperature decision
 ```
 
-The camera process publishes detection metadata only; it does not send video frames to the broker or dashboard. The OV2640 shown in the supplied wiring diagram is not an active camera input in this firmware; the supported vision path is a separate laptop USB webcam.
+The ESP32-CAM is a separate board because the main ESP32 DevKit is already assigned to DHT, radar, and buzzer. It serves real JPEG images directly over HTTP and does not publish images to MQTT. The optional laptop YOLO process remains a separate detection feature and publishes metadata only.
 
 ## Features
 
@@ -72,7 +73,8 @@ The camera process publishes detection metadata only; it does not send video fra
 - [x] 🔔 ESP32 active-high buzzer control through a suitable transistor/driver.
 - [x] 📶 ESP32 Wi-Fi and MQTT reconnect behavior; browser/API remains available when the broker is offline.
 - [x] 📨 MQTT simulator with NORMAL, WARNING, and EMERGENCY scenarios.
-- [x] 🧍 Laptop USB webcam person detection with OpenCV and Ultralytics YOLO (`yolo11n.pt`).
+- [x] 📷 Separate ESP32-CAM OV2640 JPEG snapshot endpoint and optional MJPEG stream (AI-Thinker pin map gated on explicit board confirmation).
+- [x] 🧍 Optional laptop USB webcam person detection with OpenCV and Ultralytics YOLO (`yolo11n.pt`).
 - [x] 🖥️ Flask REST API and responsive live dashboard with sensor, alert, broker, and network state.
 - [x] 🗺️ 2D near/mid/far radar range-zone visualization.
 - [x] 📝 Rotating JSONL event history and automated tests.
@@ -94,7 +96,7 @@ Disconnect power before wiring. Check each breakout board's datasheet for supply
 | Active buzzer driver input | GPIO 25 | Firmware logic is active-high. Use a transistor/MOSFET driver suitable for the buzzer. |
 | Buzzer/driver ground | Common GND | Power the buzzer through the driver, not directly from an ESP32 GPIO. |
 | ESP32 power | 5 V USB to board VIN/USB | Use the board's documented power input. |
-| OV2640 SDA/SCL (diagram only) | GPIO 21 / GPIO 22 | Control bus only; these two lines do not provide camera image capture. No OV2640 driver/pin map is implemented. |
+| OV2640 camera | Onboard connector of the separate ESP32-CAM | The AI-Thinker sketch uses that board's internal pin map; do not connect the camera bus to GPIO21/22 on the main sensor ESP32. Confirm the exact camera-board model before enabling its pin map. |
 | External antenna | Compatible board antenna connector only | Applicable only to the exact ESP32 board with a compatible connector and antenna-selection hardware. Do not modify antenna hardware blindly. |
 | Laptop camera | USB webcam on the PC | Used by the optional YOLO process; separate from the ESP32 OV2640. |
 
@@ -175,12 +177,14 @@ Copy `.env.example` to `.env`. These are the current configuration keys:
 | `TEMPERATURE_THRESHOLD` | `50` | Backend emergency threshold in °C. |
 | `CAMERA_INDEX` | `0` | Laptop USB webcam index for YOLO. |
 | `YOLO_MODEL` | `yolo11n.pt` | Ultralytics model name/path. |
+| `CAMERA_BASE_URL` | empty | Base HTTP URL of ESP32-CAM, e.g. `http://192.168.1.50`; Flask derives `/capture` and `/stream`. |
+| `CAMERA_REFRESH_SECONDS` | `5` | Automatic snapshot refresh interval, clamped to at least 2 seconds. |
 | `FLASK_HOST` | `127.0.0.1` | Flask bind address. |
 | `FLASK_PORT` | `5000` | Flask port. |
 
 For consistent alarms, set `FIRE_THRESHOLD_C` in ESP32 `secrets.h` equal to `TEMPERATURE_THRESHOLD` in `.env`.
 
-### ESP32 `secrets.h`
+### Shared ESP32 `secrets.h`
 
 Copy the example header in the firmware folder and edit the local copy:
 
@@ -188,7 +192,7 @@ Copy the example header in the firmware folder and edit the local copy:
 Copy-Item esp32\esp32_fire_monitor\secrets.example.h esp32\esp32_fire_monitor\secrets.h
 ```
 
-Set `WIFI_SSID`, `WIFI_PASSWORD`, `MQTT_HOST` to the PC's reachable LAN IPv4 address, `MQTT_PORT`, and `FIRE_THRESHOLD_C`. `secrets.h` is ignored by Git. Do not commit Wi-Fi credentials.
+Set `WIFI_SSID` and `WIFI_PASSWORD` for either board. For `DEVICE_ROLE_SENSOR`, also set `MQTT_HOST` to the PC's reachable LAN IPv4 address, `MQTT_PORT`, and `FIRE_THRESHOLD_C` aligned with `.env`. The default role is `DEVICE_ROLE_SENSOR`; select `DEVICE_ROLE_CAMERA` only for the separate camera board. **Only uncomment `CAMERA_MODEL_AI_THINKER` after confirming that the physical camera board is AI-Thinker ESP32-CAM with OV2640.** `secrets.h` is ignored by Git. Do not commit credentials.
 
 ## Run the Application
 
@@ -232,6 +236,8 @@ python ai\human_detector.py
 
 The webcam window displays local detection boxes. Press `Q` to exit. Only detection state and camera connectivity metadata are published; frames are not sent.
 
+The ESP32-CAM is a separate microcontroller/HTTP service, not another Python terminal. Flash and power it as described in [ESP32-CAM Setup](#esp32-cam-setup). Put its printed IP in `CAMERA_BASE_URL` in `.env`, restart Flask, then use Capture Image, Refresh Image, or Start Live Stream on the dashboard. Use a DHCP reservation or static lease if the camera IP must stay fixed.
+
 ## ESP32 Firmware Setup
 
 1. Install Arduino IDE 2.x and Espressif ESP32 board support through Boards Manager.
@@ -244,6 +250,37 @@ The webcam window displays local detection boxes. Press `Q` to exit. Only detect
 
 The LD2410C parser is driven by `radar.read()` on UART2 at 256000 baud. The library's `begin()` performs a bounded sensor handshake. If the radar is missing, check supply, common ground, crossed UART pins, and the module's UART configuration. The firmware's local buzzer rule is temperature-based; presence is reported separately.
 
+## ESP32-CAM Setup
+
+This is a second board but it uses the same single `.ino` source with another compile-time role. The camera role uses `esp_camera.h`, JPEG capture, `GET /capture`, and optional `GET /stream` for the **AI-Thinker ESP32-CAM with OV2640 only**. The model is deliberately compile-gated. Do not select camera role or enable its board macro until you have checked the board name printed on the module/package. If yours is another variant or a raw OV2640 module, identify the exact board/module model before using a pin map.
+
+### AI-Thinker camera board wiring
+
+The OV2640 is normally fitted and connected to the AI-Thinker ESP32-CAM PCB. Do not connect its camera flex/header to the main ESP32 DevKit. For flashing, use a USB-to-TTL adapter:
+
+| USB-to-TTL / control | ESP32-CAM connection | Notes |
+| --- | --- | --- |
+| Adapter TX | U0R / GPIO3 | UART crossed: adapter TX to board RX. Use 3.3 V UART logic. |
+| Adapter RX | U0T / GPIO1 | UART crossed: adapter RX to board TX. |
+| GND | GND | Common ground. |
+| Stable regulated 5 V supply | 5V pin | Use a supply with sufficient current for Wi-Fi and camera peaks; do not power from the adapter's 3.3 V pin. |
+| Boot strap for flashing | GPIO0 to GND | Connect only while uploading; remove GPIO0-GND and reset/power-cycle to run. |
+| OV2640 | On-board camera connector | Use the board's latch/connector as designed; no extra SDA/SCL wiring. |
+
+Never feed 5 V into UART GPIO pins. Power down before wiring. GPIO0 must be disconnected from GND for normal operation. The camera IP and main ESP32 sensor device may be on the same Wi-Fi but are independent network devices.
+
+### Flash and configure
+
+1. Confirm the board is specifically an AI-Thinker ESP32-CAM with OV2640. If not, stop and identify the model first.
+2. In Arduino IDE 2.x install Espressif ESP32 board support. Select **AI Thinker ESP32-CAM**, enable PSRAM if that menu is available, and choose the USB serial port for the USB-to-TTL adapter.
+3. In the same shared `esp32_fire_monitor/secrets.h` used for the sensor role, enter Wi-Fi details, set `DEVICE_ROLE` to `DEVICE_ROLE_CAMERA`, and uncomment `CAMERA_MODEL_AI_THINKER` only after confirming the model.
+4. Wire 5 V, GND, crossed U0R/U0T, and GPIO0-GND for upload; press/reset the board if needed, then upload the shared `esp32_fire_monitor.ino`.
+5. Remove the GPIO0-GND jumper and reset/power-cycle. Open Serial Monitor at 115200 baud and note the camera's DHCP IP address.
+6. Verify the camera directly by opening `http://CAMERA_IP/capture` in a browser; it should return a JPEG. `http://CAMERA_IP/stream` serves optional MJPEG. The synchronous stream holds the camera web-server loop while a viewer is connected; use one viewer at a time and stop the stream before requesting a snapshot.
+7. Set `CAMERA_BASE_URL=http://CAMERA_IP` in `.env`, restart Flask, and use the dashboard camera controls. The dashboard shows image load/error state, not a fabricated camera-connected flag.
+
+Camera `/capture` and `/stream` are unauthenticated plain HTTP endpoints for a trusted LAN demonstration only. Do not expose them to the public internet.
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -251,6 +288,8 @@ The LD2410C parser is driven by `radar.read()` on UART2 at 256000 baud. The libr
 | `GET` | `/api/status` | Latest sensor state, radar measurements, assessment, broker state, and sensor freshness. |
 | `GET` | `/api/network` | Host network interface/IP, MQTT connectivity, TCP connect latency, and packet-loss status (`N/A` when unmeasured). |
 | `GET` | `/api/logs` | Up to 100 most recent JSONL events, latest first. |
+
+`/api/status` also returns `camera_base_url`, `camera_capture_url`, `camera_stream_url`, and `camera_refresh_seconds`, derived from the single `CAMERA_BASE_URL` setting.
 
 ## Fire Decision Logic
 
@@ -272,7 +311,7 @@ The backend warning/emergency thresholds use `TEMPERATURE_THRESHOLD`; align the 
 | `fire/emergency/network` | Device → backend | Optional device network information. |
 | `fire/emergency/alert` | Backend → subscribers | Rising-edge emergency notification. |
 
-The ESP32 sends `presence`, while the simulator's legacy field is `human_detected`; the backend accepts both. A representative message is:
+The main ESP32 sends `presence`, while the simulator's legacy field is `human_detected`; the backend accepts both. Laptop YOLO sends camera detection metadata on the sensor topic. ESP32-CAM JPEG images are served directly over HTTP and are **not** sent over MQTT. A representative sensor message is:
 
 ```json
 {
@@ -303,7 +342,7 @@ mosquitto_sub -h localhost -p 1883 -t "fire/emergency/#" -v
 
 The dashboard maps the LD2410C's measured range to illustrative **near**, **mid**, and **far** bands. The current display uses near below 150 cm, mid from 150 to 399 cm, and far at 400 cm or farther. These are visualization bands, not calibrated room zones.
 
-The LD2410C reports distance but not target bearing, so the marker is centered for display and must not be interpreted as left/right position or exact coordinates. It is a 2D view only: there is no 3D map, depth sensing, or LiDAR. The OV2640's SDA/SCL wires alone cannot capture an image; a camera driver and verified board-specific image-bus pin map would be needed. The supported optional vision feature uses a laptop USB webcam.
+The LD2410C reports distance but not target bearing. The dashboard therefore draws a circular range ring around the fixed radar point; it does not place a person at an invented X/Y coordinate. The ring display scale tops out at 600 cm; farther reported ranges are labeled with their measurement while the visible radius is clamped. It is a 2D view only: there is no 3D reconstruction, depth sensing, or LiDAR.
 
 ## Hardware Demonstration Checklist
 
@@ -324,6 +363,8 @@ The LD2410C reports distance but not target bearing, so the marker is centered f
 15. Open the dashboard and verify status, connectivity, map range band, and event history update.
 16. Interrupt Wi-Fi or restart Mosquitto, then confirm reconnect and that stale device status clears before returning online.
 
+For the separate camera board, additionally verify `/capture` returns a JPEG, dashboard Capture/Refresh updates the picture, the optional stream connects, and the snapshot control works again after stopping the stream. Test with a harmless scene; no fire is required.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -336,6 +377,9 @@ The LD2410C reports distance but not target bearing, so the marker is centered f
 | LD2410C stays disconnected or reports no presence | Supply/logic mismatch, UART crossed incorrectly, baud/configuration mismatch, or target outside detection area. | Verify exact module voltage, common ground, TX→GPIO16, RX→GPIO17, 256000 baud, compatible library, and sensor configuration. |
 | Buzzer does not sound | Wrong polarity/active level, threshold mismatch, or driver wiring issue. | Check active-high GPIO 25 driver, its supply/common ground, and `FIRE_THRESHOLD_C` alignment with `.env`. |
 | Webcam/YOLO does not start | Camera busy/permission denied, wrong index, or first-run model/download issue. | Close other webcam apps, check OS permissions and `CAMERA_INDEX`, confirm network/disk access, and retry on CPU. |
+| ESP32-CAM image does not load | Camera IP missing/wrong, camera not on same LAN, wrong board pin map, or camera server failed. | Read its IP from Serial Monitor; check `http://CAMERA_IP/capture` directly, `CAMERA_BASE_URL`, board identity, power, and Wi-Fi. |
+| ESP32-CAM uploads but does not boot | GPIO0 is still tied to GND, weak 5 V supply, or wrong board selected. | Remove GPIO0-GND after flashing, reset, use a stable 5 V supply, and verify the exact board selection. |
+| MJPEG stream prevents snapshots | The simple synchronous WebServer stream handles one camera client at a time. | Stop the stream in the dashboard before requesting a snapshot; power-cycle the camera if the browser disconnect did not release it. |
 
 For Windows network checks, see [`network/network_testing.md`](network/network_testing.md).
 
@@ -344,7 +388,8 @@ For Windows network checks, see [`network/network_testing.md`](network/network_t
 - Educational prototype only; no certification, calibrated fire detection, or emergency-response guarantee.
 - Temperature-only thresholds are simple demonstration rules and do not prove fire.
 - The current visual map is 2D and range-zone-based; it has no 3D/depth/LiDAR sensing or radar bearing.
-- The raw OV2640 path is not implemented. Its I2C SDA/SCL control wires are not a complete camera interface.
+- ESP32-CAM firmware is currently AI-Thinker-specific and compile-gated; other camera variants need their confirmed pin mapping. Its basic synchronous MJPEG handler serves one viewer at a time.
+- Camera endpoints are unauthenticated HTTP on the trusted local network; they are not hardened for internet exposure.
 - The optional YOLO detector uses a laptop USB webcam and publishes metadata rather than video.
 - MQTT port 1883 is unencrypted in the documented local setup; authentication/TLS and deployment hardening are not implemented.
 - Sensor history is bounded rotating JSONL, not a database. Network latency is TCP connect time, not MQTT round-trip time; packet loss is not measured.

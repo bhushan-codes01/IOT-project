@@ -67,6 +67,23 @@
       </div>
     </section>
 
+    <section class="camera-section" aria-labelledby="camera-title">
+      <div class="camera-header">
+        <div><h2 class="camera-title" id="camera-title">CAMERA MONITORING</h2><p class="camera-caption">ESP32-CAM snapshot · camera board configured separately</p></div>
+        <span class="camera-state unknown" id="camera-feed-state">CAMERA NOT CONFIGURED</span>
+      </div>
+      <div class="camera-view" id="camera-view">
+        <img id="camera-image" alt="Latest JPEG image from the configured ESP32-CAM" hidden>
+        <div class="camera-placeholder" id="camera-placeholder">Set CAMERA_BASE_URL in .env to display camera images.</div>
+      </div>
+      <div class="camera-controls">
+        <button class="camera-button" id="capture-button" type="button" disabled>Capture Image</button>
+        <button class="camera-button" id="refresh-image-button" type="button" disabled>Refresh Image</button>
+        <button class="camera-button" id="stream-toggle-button" type="button" disabled aria-pressed="false">Start Live Stream</button>
+        <span class="camera-address" id="camera-address">CAMERA: NOT CONFIGURED</span>
+      </div>
+    </section>
+
     <section aria-labelledby="connectivity-title">
       <div class="sec-label"><h2 id="connectivity-title">CONNECTIVITY</h2></div>
       <div class="conn-grid">
@@ -79,19 +96,15 @@
     <section class="map-section" aria-labelledby="map-title">
       <div class="map-header"><h2 class="map-title" id="map-title">2D ENVIRONMENTAL MAP</h2><span class="map-radar-status unknown" id="map-radar-status">RADAR UNKNOWN</span></div>
       <div class="map-container" id="map-container" data-level="NORMAL">
-        <div class="map-grid" aria-hidden="true">
-          <div class="map-cell"><span class="zone-label">FAR RANGE</span></div><div class="map-cell"></div><div class="map-cell"></div><div class="map-cell"></div><div class="map-cell"></div>
-          <div class="map-cell"><span class="zone-label">MID RANGE</span></div><div class="map-cell"></div><div class="map-cell"></div><div class="map-cell"></div><div class="map-cell"></div>
-          <div class="map-cell"><span class="zone-label">NEAR RANGE</span></div><div class="map-cell"></div><div class="map-cell"></div><div class="map-cell"></div><div class="map-cell"></div>
-        </div>
-        <div class="map-markers" id="map-markers" aria-hidden="true"></div>
+        <canvas class="radar-canvas" id="radar-map" role="img" aria-label="Radar distance rings; no target detected">Distance-only radar map</canvas>
       </div>
       <div class="map-footer">
         <div class="map-footer-item">RANGE <strong id="range-val">NO TARGET</strong></div>
         <div class="map-footer-item" id="esp-status-cell">ESP32 <strong class="disconnected">OFFLINE</strong></div>
         <div class="map-footer-item">LAST SEEN <strong id="last-seen">WAITING</strong></div>
       </div>
-      <p class="map-note">Range bands only; the LD2410C does not report target direction. Marker placement is illustrative, not a coordinate or camera view.</p>
+      <p class="radar-detail" id="radar-detail">MOVING: -- · STATIONARY: --</p>
+      <p class="map-note">The radar reports range, not direction. The highlighted circle represents measured distance and does not assign an X/Y location or reconstruct a 3D scene.</p>
     </section>
 
     <section class="bottom-row">

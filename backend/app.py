@@ -15,7 +15,16 @@ if str(PROJECT_ROOT) not in sys.path:
 from flask import Flask, jsonify, render_template
 
 from backend import network_monitor
-from backend.config import FLASK_HOST, FLASK_PORT, LOG_DIR, MQTT_BROKER, MQTT_PORT, TEMPERATURE_THRESHOLD
+from backend.config import (
+    CAMERA_BASE_URL,
+    CAMERA_REFRESH_SECONDS,
+    FLASK_HOST,
+    FLASK_PORT,
+    LOG_DIR,
+    MQTT_BROKER,
+    MQTT_PORT,
+    TEMPERATURE_THRESHOLD,
+)
 from backend.fire_detection import assess_fire_risk
 from backend.mqtt_client import MQTTService
 from backend.state_store import StateStore
@@ -72,6 +81,10 @@ def create_app(state_store: StateStore | None = None) -> Flask:
             "sensor_device": values["sensor_device"],
             "message": values["message"],
             "demo_mode": values.get("demo_mode", False),
+            "camera_base_url": CAMERA_BASE_URL,
+            "camera_capture_url": f"{CAMERA_BASE_URL}/capture" if CAMERA_BASE_URL else "",
+            "camera_stream_url": f"{CAMERA_BASE_URL}/stream" if CAMERA_BASE_URL else "",
+            "camera_refresh_seconds": CAMERA_REFRESH_SECONDS,
         })
 
     @app.get("/api/network")

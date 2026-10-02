@@ -39,3 +39,28 @@ def test_status_marks_old_sensor_data_disconnected():
 
     assert result["sensor_connected"] is False
     assert result["esp32_connected"] is False
+
+
+def test_status_exposes_configured_camera_endpoints(monkeypatch):
+    from backend import app as backend_app
+
+    monkeypatch.setattr(backend_app, "CAMERA_BASE_URL", "http://192.168.1.50")
+    monkeypatch.setattr(backend_app, "CAMERA_REFRESH_SECONDS", 5)
+
+    result = backend_app.create_app(StateStore()).test_client().get("/api/status").get_json()
+
+    assert result["camera_base_url"] == "http://192.168.1.50"
+    assert result["camera_capture_url"] == "http://192.168.1.50/capture"
+    assert result["camera_stream_url"] == "http://192.168.1.50/stream"
+    assert result["camera_refresh_seconds"] == 5
+
+
+def test_dashboard_renders_camera_controls_and_distance_map():
+    response = create_app(StateStore()).test_client().get("/")
+
+    assert response.status_code == 200
+    assert b"camera-image" in response.data
+    assert b"Capture Image" in response.data
+    assert b"Refresh Image" in response.data
+    assert b"Start Live Stream" in response.data
+    assert b"radar-map" in response.data
