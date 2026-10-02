@@ -1,33 +1,367 @@
-# AIoT-Based Environmental Monitoring and Human Detection for Fire Emergencies
+<div align="center">
 
-A Windows-first college-project prototype combining ESP32 environmental telemetry, MQTT, a Python/Flask dashboard, laptop webcam person detection with YOLO, and host network measurements. It works in software-only mode with a sensor simulator before any hardware is connected. It does not use Raspberry Pi or an LLM.
+<img src="https://capsule-render.vercel.app/api?type=rounded&height=170&color=0:071009,100:16351D&text=AIoT%20Fire%20Monitor&fontColor=74F08A&fontSize=42&fontAlignY=48&desc=Environmental%20Telemetry%20%7C%20Radar%20Presence%20%7C%202D%20Range%20Map&descAlignY=72&descSize=15" alt="AIoT Fire Monitor project banner">
 
-> **Safety:** This is an educational prototype, not a certified fire alarm or life-safety system. Temperature alone does not prove a fire. Do not rely on this software for emergency response or replace certified alarms.
+# AIoT-Based 3D Environmental Mapping & Human Detection for Fire Emergencies
+
+**A Windows-first college project for environmental telemetry, mmWave presence detection, and fire-emergency monitoring.**
+
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-REST%20API-black?logo=flask)](https://flask.palletsprojects.com/)
+[![MQTT](https://img.shields.io/badge/MQTT-Paho%20%2F%20Mosquitto-660066)](https://mqtt.org/)
+[![ESP32](https://img.shields.io/badge/Hardware-ESP32-E7352C?logo=espressif&logoColor=white)](https://www.espressif.com/)
+[![YOLO](https://img.shields.io/badge/Detection-YOLO-8A2BE2)](https://docs.ultralytics.com/)
+[![OpenCV](https://img.shields.io/badge/Vision-OpenCV-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Arduino](https://img.shields.io/badge/Firmware-Arduino%20IDE-00979D?logo=arduino&logoColor=white)](https://www.arduino.cc/)
+[![Windows](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows11&logoColor=white)](https://www.microsoft.com/windows)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+</div>
+
+> [!CAUTION]
+> **Educational prototype only. This is not a certified fire alarm or life-safety system.** Temperature alone does not establish that a fire exists. Never depend on this project for emergency response or replace certified alarms and safety procedures.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture and Data Flow](#architecture-and-data-flow)
+- [Hardware Requirements and Wiring](#hardware-requirements-and-wiring)
+- [Software Requirements](#software-requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Run the Application](#run-the-application)
+- [ESP32 Firmware Setup](#esp32-firmware-setup)
+- [API Endpoints](#api-endpoints)
+- [Fire Decision Logic](#fire-decision-logic)
+- [MQTT Topics and Payload](#mqtt-topics-and-payload)
+- [2D Environmental Map](#2d-environmental-map)
+- [Hardware Demonstration Checklist](#hardware-demonstration-checklist)
+- [Troubleshooting](#troubleshooting)
+- [Limitations](#limitations)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
+- [Author](#author)
+- [Acknowledgements](#acknowledgements)
+
+## Overview
+
+This Windows-first college-project prototype brings together ESP32 sensor telemetry, MQTT messaging, a Python/Flask dashboard, laptop USB webcam person detection with YOLO, and host network measurements. The software can also be demonstrated without hardware by publishing reproducible sensor-simulator scenarios.
+
+The project name refers to environmental mapping, but **the current visualization is 2D**. It is a range-zone display, not 3D mapping, a measured floor plan, or a certified detection system.
+
+```text
+DHT11/DHT22 +-------+
+                    +--> ESP32 -- Wi-Fi/TCP/MQTT --> Mosquitto --> Python backend
+HLK-LD2410C +-------+                                      |          +-- fire rule + JSONL logs
+                                                           |          +-- host network monitoring
+USB webcam --> OpenCV --> YOLO --> detection flag ----------+          +-- Flask API + dashboard
+Simulator --------------------- MQTT sensor topic ---------------------+
+
+ESP32 buzzer output <-- local temperature decision
+```
+
+The camera process publishes detection metadata only; it does not send video frames to the broker or dashboard. The OV2640 shown in the supplied wiring diagram is not an active camera input in this firmware; the supported vision path is a separate laptop USB webcam.
 
 ## Features
 
-- Flask dashboard with REST endpoints for state, network health, and recent JSONL events.
-- MQTT sensor ingest and alert publishing; the web app stays available when Mosquitto is down.
-- Repeatable NORMAL, WARNING, and EMERGENCY simulator scenarios.
-- YOLO person detection from a local USB webcam, with automatic CPU fallback and metadata-only MQTT publishing.
-- Network interface/IP status and measured TCP connection time to the MQTT broker. Packet loss is honestly reported as `N/A`.
-- ESP32 firmware for DHT11/DHT22, LD2410C UART parsing, local buzzer control, Wi-Fi, and MQTT telemetry.
-- A 2D range-zone dashboard view; it does not claim bearing or exact person coordinates.
+- [x] 🌡️ DHT11/DHT22 temperature and humidity telemetry.
+- [x] 📡 LD2410C UART presence parsing, with moving/stationary target range and energy when reported by the library.
+- [x] 🔔 ESP32 active-high buzzer control through a suitable transistor/driver.
+- [x] 📶 ESP32 Wi-Fi and MQTT reconnect behavior; browser/API remains available when the broker is offline.
+- [x] 📨 MQTT simulator with NORMAL, WARNING, and EMERGENCY scenarios.
+- [x] 🧍 Laptop USB webcam person detection with OpenCV and Ultralytics YOLO (`yolo11n.pt`).
+- [x] 🖥️ Flask REST API and responsive live dashboard with sensor, alert, broker, and network state.
+- [x] 🗺️ 2D near/mid/far radar range-zone visualization.
+- [x] 📝 Rotating JSONL event history and automated tests.
+- [x] 🧪 Software-only demonstration before hardware is connected.
 
-## Architecture and data flow
+## Hardware Requirements and Wiring
 
-```text
-DHT11/DHT22 ─┐
-             ├─> ESP32 ── Wi-Fi/TCP/MQTT ──> Mosquitto ──> Python backend
-HLK-LD2410C ─┘                                      │          ├─ fire rule + logs
-                                                    │          ├─ network monitoring
-USB camera ──> OpenCV ──> YOLO ── detection flag ──┘          └─ Flask dashboard
-Simulator ─────────────────── MQTT sensor topic ────────────────┘
+Disconnect power before wiring. Check each breakout board's datasheet for supply voltage, logic levels, and current. Grounds must be common. Do not drive a high-current buzzer directly from an ESP32 GPIO.
+
+| Component / signal | ESP32 connection | Notes |
+| --- | --- | --- |
+| DHT11/DHT22 VCC | 3.3 V | Confirm the sensor breakout supports 3.3 V. |
+| DHT11/DHT22 DATA | GPIO 4 | Add a 10 kΩ pull-up from DATA to 3.3 V if the module does not include one. |
+| DHT11/DHT22 GND | GND | Common ground. |
+| LD2410C TX | GPIO 16 / UART2 RX | Cross the UART data lines. |
+| LD2410C RX | GPIO 17 / UART2 TX | Default UART rate is 256000 baud. |
+| LD2410C GND | GND | Common ground. |
+| LD2410C VCC | Module-specified supply | The selected `ld2410` library documents a common breakout requiring 5 V or higher with 3.3 V UART I/O. Verify the exact module before connecting power. |
+| Active buzzer driver input | GPIO 25 | Firmware logic is active-high. Use a transistor/MOSFET driver suitable for the buzzer. |
+| Buzzer/driver ground | Common GND | Power the buzzer through the driver, not directly from an ESP32 GPIO. |
+| ESP32 power | 5 V USB to board VIN/USB | Use the board's documented power input. |
+| OV2640 SDA/SCL (diagram only) | GPIO 21 / GPIO 22 | Control bus only; these two lines do not provide camera image capture. No OV2640 driver/pin map is implemented. |
+| External antenna | Compatible board antenna connector only | Applicable only to the exact ESP32 board with a compatible connector and antenna-selection hardware. Do not modify antenna hardware blindly. |
+| Laptop camera | USB webcam on the PC | Used by the optional YOLO process; separate from the ESP32 OV2640. |
+
+## Software Requirements
+
+### PC
+
+- Windows 10/11
+- Python 3.12, 64-bit recommended
+- Mosquitto MQTT broker, installed separately
+- Arduino IDE 2.x and Espressif ESP32 board support for firmware upload
+- USB webcam for optional YOLO detection
+
+Python packages are pinned or constrained in [`requirements.txt`](requirements.txt): Flask, Paho MQTT, OpenCV, Ultralytics, NumPy, Pillow, python-dotenv, psutil, requests, and pytest. The first YOLO run may download `yolo11n.pt` and its PyTorch runtime; allow network access and disk space.
+
+### Arduino libraries
+
+- PubSubClient by Nick O'Leary
+- DHT sensor library by Adafruit
+- Adafruit Unified Sensor
+- `ld2410` by ncmreynolds
+
+## Installation
+
+### Automatic Windows setup
+
+From the project root, run:
+
+```powershell
+setup.bat
 ```
 
-Only detection metadata is sent by the camera process; no image or video stream is exposed. The backend subscribes to `fire/emergency/sensor` and `fire/emergency/network`, then publishes a rising-edge emergency message to `fire/emergency/alert`.
+If your terminal does not accept that path, run `setup.bat` from File Explorer or PowerShell. The script creates `venv`, installs `requirements.txt`, creates runtime folders, and copies `.env.example` to `.env` if needed. It does not install Mosquitto or administrator-level software.
 
-## Project structure
+### Manual setup
+
+```powershell
+cd AIoT-Fire-Emergency-System
+py -3.12 -m venv venv
+venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+If PowerShell blocks activation, either enable script activation according to your organization's policy or run the venv interpreter directly:
+
+```powershell
+venv\Scripts\python.exe -m pip install -r requirements.txt
+venv\Scripts\python.exe backend\app.py
+```
+
+### Install and start Mosquitto
+
+Install Mosquitto separately from [mosquitto.org](https://mosquitto.org/). Start the broker in its own terminal:
+
+```powershell
+mosquitto -v
+```
+
+The default local configuration commonly listens on localhost. For an ESP32 on Wi-Fi, configure Mosquitto to accept LAN clients, set the ESP32 broker host to the PC's reachable LAN IPv4 address, and allow TCP 1883 through Windows Firewall as required. Do not set the ESP32 broker host to `localhost`; that refers to the ESP32 itself. Port 1883 is unencrypted and should remain on a trusted local network for this prototype.
+
+## Configuration
+
+### `.env` settings
+
+Copy `.env.example` to `.env`. These are the current configuration keys:
+
+| Variable | Example/default | Purpose |
+| --- | --- | --- |
+| `WIFI_SSID` | `YOUR_WIFI_NAME` | Reference for the local wireless network; ESP32 credentials are placed in ignored `secrets.h`. |
+| `WIFI_PASSWORD` | `YOUR_WIFI_PASSWORD` | Reference only; keep real credentials out of tracked files. |
+| `MQTT_BROKER` | `localhost` | Broker host from the PC/backend perspective. Set the PC LAN address in `.env` when that is how the ESP32 reaches Mosquitto. |
+| `MQTT_PORT` | `1883` | Broker TCP port. |
+| `MQTT_TOPIC_SENSOR` | `fire/emergency/sensor` | Sensor and camera metadata topic. |
+| `MQTT_TOPIC_ALERT` | `fire/emergency/alert` | Backend rising-edge emergency alert topic. |
+| `MQTT_TOPIC_NETWORK` | `fire/emergency/network` | Optional network telemetry topic. |
+| `TEMPERATURE_THRESHOLD` | `50` | Backend emergency threshold in °C. |
+| `CAMERA_INDEX` | `0` | Laptop USB webcam index for YOLO. |
+| `YOLO_MODEL` | `yolo11n.pt` | Ultralytics model name/path. |
+| `FLASK_HOST` | `127.0.0.1` | Flask bind address. |
+| `FLASK_PORT` | `5000` | Flask port. |
+
+For consistent alarms, set `FIRE_THRESHOLD_C` in ESP32 `secrets.h` equal to `TEMPERATURE_THRESHOLD` in `.env`.
+
+### ESP32 `secrets.h`
+
+Copy the example header in the firmware folder and edit the local copy:
+
+```powershell
+Copy-Item esp32\esp32_fire_monitor\secrets.example.h esp32\esp32_fire_monitor\secrets.h
+```
+
+Set `WIFI_SSID`, `WIFI_PASSWORD`, `MQTT_HOST` to the PC's reachable LAN IPv4 address, `MQTT_PORT`, and `FIRE_THRESHOLD_C`. `secrets.h` is ignored by Git. Do not commit Wi-Fi credentials.
+
+## Run the Application
+
+Open separate terminals from the project root. Start the broker before publishers. The normal dashboard starts without simulated readings; use the simulator in its own terminal for software-only mode.
+
+**Terminal 1: Mosquitto**
+
+```powershell
+mosquitto -v
+```
+
+**Terminal 2: Flask dashboard and backend**
+
+```powershell
+venv\Scripts\Activate.ps1
+python backend\app.py
+```
+
+Open **http://127.0.0.1:5000**. To run the built-in rotating demo instead of live MQTT ingestion, start `python backend\app.py --demo` (do not use demo mode for hardware readings).
+
+**Terminal 3: Sensor simulator (software-only mode)**
+
+```powershell
+venv\Scripts\Activate.ps1
+python simulator\sensor_simulator.py
+```
+
+Other scenarios:
+
+```powershell
+python simulator\sensor_simulator.py --mode WARNING --interval 2
+python simulator\sensor_simulator.py --mode EMERGENCY --interval 2
+```
+
+**Terminal 4: Optional YOLO USB webcam detector**
+
+```powershell
+venv\Scripts\Activate.ps1
+python ai\human_detector.py
+```
+
+The webcam window displays local detection boxes. Press `Q` to exit. Only detection state and camera connectivity metadata are published; frames are not sent.
+
+## ESP32 Firmware Setup
+
+1. Install Arduino IDE 2.x and Espressif ESP32 board support through Boards Manager.
+2. Install PubSubClient, Adafruit DHT sensor library, Adafruit Unified Sensor, and `ld2410` by ncmreynolds through Library Manager.
+3. Copy `esp32\esp32_fire_monitor\secrets.example.h` to `secrets.h` in the same folder and configure Wi-Fi, broker LAN IP, port, and threshold.
+4. Open `esp32\esp32_fire_monitor\esp32_fire_monitor.ino`; choose the ESP32 DevKit board and serial port.
+5. Upload the sketch. Set `SENSOR_DHT_TYPE` to `DHT22` if using a DHT22.
+6. Open Serial Monitor at **115200 baud**. Check the Wi-Fi and LD2410C messages and sensor readings.
+7. Confirm JSON appears about every two seconds on `fire/emergency/sensor`.
+
+The LD2410C parser is driven by `radar.read()` on UART2 at 256000 baud. The library's `begin()` performs a bounded sensor handshake. If the radar is missing, check supply, common ground, crossed UART pins, and the module's UART configuration. The firmware's local buzzer rule is temperature-based; presence is reported separately.
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/status` | Latest sensor state, radar measurements, assessment, broker state, and sensor freshness. |
+| `GET` | `/api/network` | Host network interface/IP, MQTT connectivity, TCP connect latency, and packet-loss status (`N/A` when unmeasured). |
+| `GET` | `/api/logs` | Up to 100 most recent JSONL events, latest first. |
+
+## Fire Decision Logic
+
+With threshold `T` configured by `TEMPERATURE_THRESHOLD` in `.env`:
+
+| State | Rule | Prototype behavior |
+| --- | --- | --- |
+| `NORMAL` | Temperature is below 80% of threshold. | No temperature warning. |
+| `WARNING` | Temperature is at least 80% of threshold and below threshold. | Dashboard warning; buzzer remains off. |
+| `EMERGENCY` | Temperature is at or above the configured threshold. | Emergency state and buzzer activation. |
+
+The backend warning/emergency thresholds use `TEMPERATURE_THRESHOLD`; align the ESP32 `FIRE_THRESHOLD_C` with it. Human presence is contextual and does not independently establish fire or activate the temperature-based alarm. This demonstration rule is not scientifically validated or certified.
+
+## MQTT Topics and Payload
+
+| Topic | Direction | Purpose |
+| --- | --- | --- |
+| `fire/emergency/sensor` | ESP32/simulator/camera → backend | Sensor readings and metadata-only camera detections. |
+| `fire/emergency/network` | Device → backend | Optional device network information. |
+| `fire/emergency/alert` | Backend → subscribers | Rising-edge emergency notification. |
+
+The ESP32 sends `presence`, while the simulator's legacy field is `human_detected`; the backend accepts both. A representative message is:
+
+```json
+{
+  "temperature": 32.4,
+  "humidity": 64.0,
+  "presence": true,
+  "radar_connected": true,
+  "moving_distance": 245,
+  "stationary_distance": 0,
+  "moving_energy": 71,
+  "stationary_energy": 0,
+  "alarm": false,
+  "status": "NORMAL",
+  "device": "ESP32",
+  "uptime_ms": 123456
+}
+```
+
+The firmware uptime is not a wall-clock timestamp. The backend assigns receive time for dashboard freshness and event logs. The simulator and camera publisher include their own ISO timestamps.
+
+To inspect traffic locally:
+
+```powershell
+mosquitto_sub -h localhost -p 1883 -t "fire/emergency/#" -v
+```
+
+## 2D Environmental Map
+
+The dashboard maps the LD2410C's measured range to illustrative **near**, **mid**, and **far** bands. The current display uses near below 150 cm, mid from 150 to 399 cm, and far at 400 cm or farther. These are visualization bands, not calibrated room zones.
+
+The LD2410C reports distance but not target bearing, so the marker is centered for display and must not be interpreted as left/right position or exact coordinates. It is a 2D view only: there is no 3D map, depth sensing, or LiDAR. The OV2640's SDA/SCL wires alone cannot capture an image; a camera driver and verified board-specific image-bus pin map would be needed. The supported optional vision feature uses a laptop USB webcam.
+
+## Hardware Demonstration Checklist
+
+1. Verify wiring with power disconnected; confirm DHT DATA on GPIO 4, radar TX/RX on GPIO 16/17, and buzzer driver input on GPIO 25.
+2. Confirm module supply requirements from the actual DHT, LD2410C, buzzer driver, and ESP32 board documentation.
+3. Confirm the buzzer uses a suitable transistor/MOSFET driver and common ground; do not load an ESP32 GPIO directly with a high-current buzzer.
+4. Copy/configure ignored `secrets.h`; use the PC's reachable LAN address for `MQTT_HOST`, never `localhost` on the ESP32.
+5. Start Mosquitto and confirm it accepts the intended local/LAN clients.
+6. Upload the firmware and open Serial Monitor at 115200 baud.
+7. Confirm the ESP32 boots and associates with Wi-Fi.
+8. Confirm the LD2410C handshake reports connected; verify UART2 is 256000 baud and TX/RX are crossed.
+9. Check DHT11/DHT22 temperature and humidity are plausible and refresh regularly.
+10. Move into and out of the radar field of view; verify `presence` changes from the physical sensor.
+11. Check moving/stationary distance and energy when those targets are reported by the radar.
+12. Verify the local buzzer threshold with a safe, controlled test method; never use an actual fire.
+13. Subscribe to `fire/emergency/sensor` and confirm ESP32 JSON arrives about every two seconds.
+14. Start the normal Flask app and confirm `/api/status` shows fresh ESP32 telemetry.
+15. Open the dashboard and verify status, connectivity, map range band, and event history update.
+16. Interrupt Wi-Fi or restart Mosquitto, then confirm reconnect and that stale device status clears before returning online.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `mosquitto` command not found | Mosquitto is not installed or not on PATH. | Install it separately and reopen PowerShell; check its install folder/PATH. |
+| MQTT remains disconnected | Broker stopped, wrong host/port, or backend `.env` mismatch. | Start `mosquitto -v`; verify `MQTT_BROKER` and `MQTT_PORT`, then test TCP port 1883. |
+| ESP32 cannot connect to MQTT | ESP32 configured with `localhost`, broker only listens on loopback, firewall blocks access, or Wi-Fi client isolation. | Put the PC LAN IPv4 in `secrets.h`; configure broker LAN listening/firewall and check router isolation. |
+| Dashboard shows no sensor data | No publisher is sending to the configured topic. | Check broker, serial output, topic subscription, and `MQTT_TOPIC_SENSOR`; run the simulator to isolate hardware. |
+| DHT read fails | Wrong data pin/type, missing pull-up, power/ground issue. | Check GPIO 4, DHT11 vs DHT22 setting, wiring, supply, and DATA pull-up. |
+| LD2410C stays disconnected or reports no presence | Supply/logic mismatch, UART crossed incorrectly, baud/configuration mismatch, or target outside detection area. | Verify exact module voltage, common ground, TX→GPIO16, RX→GPIO17, 256000 baud, compatible library, and sensor configuration. |
+| Buzzer does not sound | Wrong polarity/active level, threshold mismatch, or driver wiring issue. | Check active-high GPIO 25 driver, its supply/common ground, and `FIRE_THRESHOLD_C` alignment with `.env`. |
+| Webcam/YOLO does not start | Camera busy/permission denied, wrong index, or first-run model/download issue. | Close other webcam apps, check OS permissions and `CAMERA_INDEX`, confirm network/disk access, and retry on CPU. |
+
+For Windows network checks, see [`network/network_testing.md`](network/network_testing.md).
+
+## Limitations
+
+- Educational prototype only; no certification, calibrated fire detection, or emergency-response guarantee.
+- Temperature-only thresholds are simple demonstration rules and do not prove fire.
+- The current visual map is 2D and range-zone-based; it has no 3D/depth/LiDAR sensing or radar bearing.
+- The raw OV2640 path is not implemented. Its I2C SDA/SCL control wires are not a complete camera interface.
+- The optional YOLO detector uses a laptop USB webcam and publishes metadata rather than video.
+- MQTT port 1883 is unencrypted in the documented local setup; authentication/TLS and deployment hardening are not implemented.
+- Sensor history is bounded rotating JSONL, not a database. Network latency is TCP connect time, not MQTT round-trip time; packet loss is not measured.
+- Hardware/library compatibility and sensor behavior must be validated on the exact ESP32 board and sensor modules.
+
+## Testing
+
+Run the test suite from the project root with the project environment activated:
+
+```powershell
+venv\Scripts\Activate.ps1
+python -m pytest
+```
+
+Tests cover fire-rule boundaries, MQTT offline and payload behavior, API sensor freshness, and network status/latency failure cases. Unit tests do not require a live broker, webcam, or physical ESP32. Use the simulator for an end-to-end software demonstration.
+
+## Project Structure
 
 ```text
 AIoT-Fire-Emergency-System/
@@ -41,178 +375,60 @@ AIoT-Fire-Emergency-System/
 │   ├── state_store.py
 │   └── utils.py
 ├── dashboard/
-│   ├── templates/index.html
-│   └── static/{css/style.css,js/dashboard.js}
+│   ├── static/
+│   │   ├── css/style.css
+│   │   └── js/dashboard.js
+│   └── templates/index.html
 ├── ai/
 │   ├── human_detector.py
 │   └── models/
 ├── esp32/
-│   ├── esp32_fire_monitor/esp32_fire_monitor.ino
-│   ├── esp32_fire_monitor/secrets.example.h
+│   ├── esp32_fire_monitor/
+│   │   ├── esp32_fire_monitor.ino
+│   │   └── secrets.example.h
 │   └── README.md
 ├── simulator/sensor_simulator.py
-├── network/{mqtt_topics.md,network_testing.md}
+├── network/
+│   ├── mqtt_topics.md
+│   └── network_testing.md
 ├── data/logs/
-├── tests/{test_mqtt.py,test_fire_detection.py,test_network.py}
+├── tests/
+│   ├── test_api.py
+│   ├── test_fire_detection.py
+│   ├── test_mqtt.py
+│   └── test_network.py
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
 ├── setup.bat
+├── LICENSE
 └── README.md
 ```
 
-## Requirements
+## Contributing
 
-- Windows 10/11 and Python 3.12 (recommended; Python 3.10+ may work with compatible wheels).
-- Mosquitto MQTT broker, installed separately.
-- For vision: a laptop/PC USB webcam. A GPU is optional; CPU inference is supported.
-- For hardware: ESP32 DevKit, DHT11 or DHT22, HLK-LD2410C radar, and a suitable active-high buzzer driver.
-- Arduino IDE 2.x for the ESP32 firmware.
+Contributions are welcome, especially reproducible fixes, hardware compatibility notes, and tests.
 
-Python dependencies are declared in `requirements.txt`: Flask, Paho MQTT, OpenCV, Ultralytics, NumPy, Pillow, python-dotenv, psutil, requests, and pytest. Ultralytics may install PyTorch as a dependency; its first model run downloads the configured small model (`yolo11n.pt`). Allow disk space and network access for that one-time setup.
+1. Fork the repository and create a focused feature branch.
+2. Keep changes aligned with the existing Flask, MQTT, and dashboard structure; avoid committing `.env`, `secrets.h`, model weights, or runtime logs.
+3. Run `python -m pytest` and validate any touched frontend code.
+4. Describe hardware-dependent assumptions and test results clearly in your pull request.
 
-## Installation
+## License
 
-### Automatic Windows setup
+This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for the full text.
 
-From the project folder, run `setup.bat`. It creates `venv`, upgrades pip, installs requirements, creates runtime folders, and copies `.env.example` to `.env` if needed. It does not install Mosquitto or any administrator-level software.
+## Author
 
-### Manual setup
+**Bhushan Wanere**
 
-```powershell
-cd AIoT-Fire-Emergency-System
-py -3.12 -m venv venv
-venv\Scripts\activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-```
+[![GitHub](https://img.shields.io/badge/GitHub-bhushan--codes01-181717?logo=github)](https://github.com/bhushan-codes01)
 
-Edit `.env` for local settings. Do not put real credentials in source control. The Flask app defaults to `127.0.0.1`; to use the dashboard from another device, configure an appropriate host and secure the network first.
+## Acknowledgements
 
-## Start Mosquitto
-
-Install Mosquitto separately from the official Mosquitto download site. The project does not silently install it. Open one terminal:
-
-```powershell
-mosquitto -v
-```
-
-This default local setup usually listens on localhost. To connect an ESP32 on Wi-Fi, configure the broker to listen on the PC's LAN interface, allow TCP port 1883 through Windows Firewall as appropriate, and set `MQTT_BROKER` to the PC's LAN IP in `.env` and `MQTT_HOST` in ESP32 `secrets.h`. Never use `localhost` as the broker address on the ESP32: it would mean the ESP32 itself. Port 1883 is unencrypted; keep testing local or configure authenticated TLS for deployment.
-
-If Mosquitto is absent or stopped, Flask still starts and shows MQTT disconnected. The simulator retries and reports the broker as unavailable.
-
-## Start the dashboard and simulator
-
-Terminal 1 (dashboard):
-
-```powershell
-cd AIoT-Fire-Emergency-System
-venv\Scripts\activate
-python backend/app.py
-```
-
-Open `http://127.0.0.1:5000`. API endpoints: `GET /api/status`, `GET /api/network`, and `GET /api/logs`.
-
-Terminal 2 (simulated sensors):
-
-```powershell
-cd AIoT-Fire-Emergency-System
-venv\Scripts\activate
-python simulator/sensor_simulator.py
-```
-
-Try `python simulator/sensor_simulator.py --mode WARNING` or `--mode EMERGENCY`; use `--interval 2`. Start the broker before the simulator for live data.
-
-## YOLO webcam detector
-
-With the dashboard and broker running, open another terminal:
-
-```powershell
-cd AIoT-Fire-Emergency-System
-venv\Scripts\activate
-python ai/human_detector.py
-```
-
-The detector opens camera index `0`, draws boxes, and exits on `Q`. Set `CAMERA_INDEX` or `YOLO_MODEL` in `.env` if needed. YOLO downloads the lightweight model on first run. It selects CUDA only when available and otherwise runs on CPU. Its MQTT messages contain only detection state and camera connectivity. Close other apps using the webcam if it cannot open.
-
-## ESP32 connection
-
-1. Install Arduino IDE 2.x and the Espressif ESP32 board support using the Boards Manager.
-2. Install **PubSubClient** by Nick O'Leary, **DHT sensor library** by Adafruit (including **Adafruit Unified Sensor**), and **ld2410** by ncmreynolds from Arduino Library Manager. The firmware calls that library's `begin`, `read`, `isConnected`, presence, moving-target, and stationary-target APIs.
-3. Copy `esp32/esp32_fire_monitor/secrets.example.h` to `secrets.h` in that directory. Set Wi-Fi SSID/password, the PC's reachable LAN IPv4 address, broker port, and the emergency temperature threshold. `secrets.h` is ignored by Git.
-4. Open `esp32_fire_monitor.ino`, select the ESP32 DevKit board and serial port, then compile/upload. Change `SENSOR_DHT_TYPE` from `DHT11` to `DHT22` if needed.
-5. Monitor serial at 115200 baud. Confirm the LD2410C connection message, then watch for JSON publications every two seconds on `fire/emergency/sensor`. The firmware reports `presence`, radar connection, moving/stationary distance and energy, temperature, humidity, alarm, and uptime. Keep `FIRE_THRESHOLD_C` in `secrets.h` aligned with `TEMPERATURE_THRESHOLD` in `.env`.
-
-Do not connect the ESP32 broker host to `localhost`; use the PC's LAN IP. Routers may isolate Wi-Fi clients, so confirm reachability and firewall rules if the board cannot connect.
-
-## Hardware wiring
-
-Disconnect power while wiring. Check the exact breakout-board voltage/current specifications and ESP32 pin tolerance before connecting. Do not drive a high-current buzzer directly from a GPIO; use an appropriate transistor/driver and common ground.
-
-| Module | Connection |
-| --- | --- |
-| DHT11/DHT22 VCC | 3.3V (check breakout requirements) |
-| DHT GND | ESP32 GND |
-| DHT DATA | GPIO 4; add pull-up if the module does not include one |
-| Active-high buzzer driver input | GPIO 25 |
-| Buzzer driver ground | ESP32 common GND; power the buzzer through a suitable driver |
-| LD2410C TX | ESP32 RX GPIO 16 (crossed) |
-| LD2410C RX | ESP32 TX GPIO 17 (crossed) |
-| LD2410C GND | ESP32 GND |
-| LD2410C power | Use the module's specified supply; verify logic levels before wiring UART |
-
-The OV2640 camera is not connected to this firmware. SDA/SCL are only camera-control lines; full image capture requires the exact ESP32 camera board's D0-D7, XCLK, PCLK, VSYNC, HREF, SCCB, and power/reset mapping plus a compatible driver. Do not copy an ESP32-CAM pin map to a different board. The external antenna is only for ESP32 boards fitted with a compatible antenna connector; leave board antenna hardware unchanged otherwise.
-
-The firmware uses the `ld2410.h` parser API from **ld2410 by ncmreynolds** and continuously calls `radar.read()` on UART2 at 256000 baud (RX=16/TX=17). It publishes the parser's presence and target distance/energy when available. That library documents its common LD2410 breakout as requiring 5 V or higher power with 3.3 V UART logic; verify the exact LD2410C board/datasheet before applying power. The backend keeps the established `fire/emergency/sensor` topic and accepts both `presence` and the simulator's older `human_detected` field.
-
-The dashboard's 2D map shows a near/mid/far range band based on the radar distance, with the marker centered only for display. LD2410C does not provide target direction, so this is not a measured floor-plan coordinate. The OV2640 diagram's SDA/SCL pins are camera-control lines only; they are insufficient for image capture. This project has no ESP32 OV2640 driver or verified camera pin map. Its optional YOLO camera feature uses a separate laptop USB webcam and sends detection metadata only.
-
-## Fire decision rule
-
-`NORMAL` is below 80% of the configured temperature threshold, `WARNING` is at or above 80% but below threshold, and `EMERGENCY` is at or above threshold. Only the emergency level sets backend `fire_status` and buzzer state. Human presence is contextual and does not independently establish a fire. This is a configurable demonstration rule, not a scientifically validated or certified detector. The ESP32 starter buzzer rule uses its firmware constant; update both settings consistently.
-
-## Computer Networks component
-
-See `network/mqtt_topics.md` for IoT, Wi-Fi, IP, client/server, MQTT broker, publisher/subscriber, TCP/IP, port 1883, latency and packet transmission. See `network/network_testing.md` for Windows `ping`, `Test-NetConnection`, MQTT CLI and Wireshark tests. Dashboard latency is a measured TCP connect time to the broker, not application round-trip latency. Packet loss is shown as `N/A`; interface byte counters are host-level totals, not MQTT packet counts.
-
-## Logs and tests
-
-Sensor events are JSONL in `data/logs/events.jsonl`, rotated at 1 MB with three backups. The log route exposes only the latest 100 entries.
-
-### Hardware demonstration checklist
-
-1. Power the ESP32 and confirm the startup banner and Wi-Fi connection in Serial Monitor.
-2. Confirm DHT11 temperature and humidity are plausible and update about every two seconds.
-3. Confirm the LD2410C connection message; move into and out of its configured field of view.
-4. Confirm serial/MQTT telemetry changes `presence` with the real sensor and reports target distance/energy when supplied by the parser.
-5. Verify buzzer output with a safe, controlled temperature test at the configured threshold; never use an actual fire.
-6. Confirm the ESP32 reconnects after Wi-Fi is interrupted.
-7. Start Mosquitto and confirm the ESP32 connects to the broker's computer LAN address.
-8. Run `mosquitto_sub -h localhost -p 1883 -t fire/emergency/sensor -v` and check JSON arrives every two seconds.
-9. Start Flask and verify `GET /api/status` shows sensor values, radar data, and `esp32_connected: true` when the ESP32 is publishing.
-10. Open the dashboard and confirm temperature, humidity, radar, alarm, broker, and last-seen states update.
-11. Move closer/farther within radar range and confirm the map band changes; it represents range only, not direction or exact coordinates.
-12. Stop/restart Mosquitto or disconnect Wi-Fi; verify dashboard freshness goes offline after 10 seconds and returns after publishing resumes.
-
-```powershell
-venv\Scripts\activate
-python -m pytest
-```
-
-Tests cover fire-rule boundaries, MQTT offline behavior, and network status/latency failure cases; they do not require a live broker, camera, or ESP32.
-
-## Troubleshooting
-
-- **MQTT disconnected:** Run `mosquitto -v`, confirm host/port in `.env`, then test with `Test-NetConnection localhost -Port 1883`.
-- **ESP32 cannot reach broker:** Use the PC LAN IPv4 in `secrets.h`; configure Mosquitto for LAN access and check Windows Firewall/client isolation.
-- **Dashboard receives no sensor values:** Ensure broker is running and simulator prints a successful connection; subscribe to `fire/emergency/#` with `mosquitto_sub`.
-- **Webcam unavailable:** Check `CAMERA_INDEX`, OS camera permissions, and whether another app has locked it.
-- **YOLO model download/inference fails:** Confirm internet access for the first model download, available disk space, then retry on CPU. GPU is optional.
-- **DHT read failed:** Check GPIO 4, power, ground, pull-up, and selected DHT model type.
-- **Radar not connected or always absent:** Verify the `ld2410.h`-compatible library is installed, UART TX/RX are crossed to GPIO 16/17, common ground and module power are correct, and sensor UART baud/configuration matches the library.
-- **No dependency wheel:** Use Python 3.12 64-bit and rerun `python -m pip install -r requirements.txt` inside the venv.
-
-## Limitations and future improvements
-
-This is a prototype for coursework and controlled demonstrations only. It is not a certified fire alarm or life-safety system. It lacks certified fire sensing, authenticated/encrypted broker configuration, persistent database storage, camera privacy controls beyond local processing, and deployment hardening. The laptop webcam must run on the same broker network. Network latency sampling is TCP connection setup time and packet loss remains unmeasured. There is no LiDAR/depth sensor, so the system does not provide 3D environmental mapping. The radar parser/library and live hardware must be verified on the exact sensor and board before relying on measurements.
+- Espressif and Arduino communities for ESP32 tooling and documentation.
+- Adafruit for the DHT sensor library and sensor integration resources.
+- Nick O'Leary for PubSubClient and ncmreynolds for the LD2410 Arduino library.
+- Eclipse Mosquitto and the Paho project for MQTT broker/client implementations.
+- Ultralytics and OpenCV for the optional local webcam detection pipeline.
+- Flask and the Python open-source community for the backend and testing ecosystem.
