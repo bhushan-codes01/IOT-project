@@ -69,12 +69,12 @@
 
     <section class="camera-section" aria-labelledby="camera-title">
       <div class="camera-header">
-        <div><h2 class="camera-title" id="camera-title">CAMERA MONITORING</h2><p class="camera-caption">ESP32-CAM snapshot · camera board configured separately</p></div>
+        <div><h2 class="camera-title" id="camera-title">CAMERA MONITORING</h2><p class="camera-caption">USB webcam + YOLO person detection on the Windows PC</p></div>
         <span class="camera-state unknown" id="camera-feed-state">CAMERA NOT CONFIGURED</span>
       </div>
       <div class="camera-view" id="camera-view">
-        <img id="camera-image" alt="Latest JPEG image from the configured ESP32-CAM" hidden>
-        <div class="camera-placeholder" id="camera-placeholder">Set CAMERA_BASE_URL in .env to display camera images.</div>
+        <img id="camera-image" alt="Latest frame from the local USB webcam stream" hidden>
+        <div class="camera-placeholder" id="camera-placeholder">Start the local webcam stream or configure an external camera URL.</div>
       </div>
       <div class="camera-controls">
         <button class="camera-button" id="capture-button" type="button" disabled>Capture Image</button>

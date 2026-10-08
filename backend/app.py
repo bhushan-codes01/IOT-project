@@ -12,9 +12,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, Response, jsonify, render_template
 
 from backend import network_monitor
+from backend.camera_manager import CameraManager
 from backend.config import (
     CAMERA_BASE_URL,
     CAMERA_REFRESH_SECONDS,
@@ -42,6 +43,7 @@ def create_app(state_store: StateStore | None = None) -> Flask:
         static_url_path="/static",
     )
     app.extensions["state_store"] = state
+    camera_manager = CameraManager(state)
 
     @app.get("/")
     def index() -> str:
@@ -83,9 +85,25 @@ def create_app(state_store: StateStore | None = None) -> Flask:
             "demo_mode": values.get("demo_mode", False),
             "camera_base_url": CAMERA_BASE_URL,
             "camera_capture_url": f"{CAMERA_BASE_URL}/capture" if CAMERA_BASE_URL else "",
-            "camera_stream_url": f"{CAMERA_BASE_URL}/stream" if CAMERA_BASE_URL else "",
+            "camera_stream_url": f"{CAMERA_BASE_URL}/stream" if CAMERA_BASE_URL else "/video_feed",
             "camera_refresh_seconds": CAMERA_REFRESH_SECONDS,
+            "camera_local": not CAMERA_BASE_URL,
+            "camera_person_detected": values["human_camera"],
+            "camera_person_count": camera_manager.snapshot().get("person_count", 0),
         })
+
+    @app.get("/api/camera")
+    def camera() -> Any:
+        payload = camera_manager.snapshot()
+        payload.update({
+            "camera_connected": bool(state.snapshot().get("camera_connected", False) or payload.get("camera_connected", False)),
+            "person_detected": bool(state.snapshot().get("human_camera", payload.get("person_detected", False))),
+        })
+        return jsonify(payload)
+
+    @app.get("/video_feed")
+    def video_feed() -> Response:
+        return Response(camera_manager.generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.get("/api/network")
     def network() -> Any:

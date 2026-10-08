@@ -196,10 +196,10 @@ function snapshotUrl() {
 }
 
 function refreshCameraImage() {
-  if (!cameraBaseUrl || cameraStreamActive) return;
+  if (cameraStreamActive) return;
   setCameraState('CAPTURING IMAGE', 'unknown');
-  showCameraPlaceholder('Requesting a JPEG image from the ESP32-CAM...');
-  $('camera-image').src = snapshotUrl();
+  showCameraPlaceholder('Requesting the latest USB webcam frame...');
+  $('camera-image').src = cameraBaseUrl ? snapshotUrl() : '/video_feed';
 }
 
 function configureCamera(status) {
@@ -207,24 +207,24 @@ function configureCamera(status) {
   const changed = nextBaseUrl !== cameraBaseUrl;
   cameraBaseUrl = nextBaseUrl;
   cameraRefreshSeconds = clamp(finiteNumber(status.camera_refresh_seconds, 5), 2, 60);
-  const configured = Boolean(cameraBaseUrl);
+  const configured = Boolean(cameraBaseUrl) || Boolean(status.camera_local);
   $('capture-button').disabled = !configured;
   $('refresh-image-button').disabled = !configured;
   $('stream-toggle-button').disabled = !configured;
-  setText('camera-address', configured ? `CAMERA: ${cameraBaseUrl}` : 'CAMERA: NOT CONFIGURED');
+  setText('camera-address', configured ? (cameraBaseUrl ? `CAMERA: ${cameraBaseUrl}` : 'CAMERA: LOCAL USB WEBCAM') : 'CAMERA: NOT CONFIGURED');
 
   if (!configured) {
     stopCameraStream(false);
     if (cameraRefreshTimer !== null) window.clearInterval(cameraRefreshTimer);
     cameraRefreshTimer = null;
-    showCameraPlaceholder('Set CAMERA_BASE_URL in .env to display images from the ESP32-CAM.');
+    showCameraPlaceholder('Start the local USB webcam stream or configure a camera URL.');
     setCameraState('CAMERA NOT CONFIGURED', 'unknown');
     return;
   }
 
   if (changed || cameraRefreshTimer === null) {
     stopCameraStream(false);
-    showCameraPlaceholder('Waiting for an image from the camera board...');
+    showCameraPlaceholder('Waiting for the local USB webcam...');
     setCameraState('WAITING FOR CAMERA', 'unknown');
     if (cameraRefreshTimer !== null) window.clearInterval(cameraRefreshTimer);
     cameraRefreshTimer = window.setInterval(refreshCameraImage, cameraRefreshSeconds * 1000);
@@ -234,19 +234,23 @@ function configureCamera(status) {
 
 function stopCameraStream(refreshSnapshot = true) {
   cameraStreamActive = false;
-  $('capture-button').disabled = !cameraBaseUrl;
-  $('refresh-image-button').disabled = !cameraBaseUrl;
-  $('stream-toggle-button').disabled = !cameraBaseUrl;
+  const enabled = Boolean(cameraBaseUrl) || Boolean(window.location && window.location.pathname);
+  $('capture-button').disabled = !enabled;
+  $('refresh-image-button').disabled = !enabled;
+  $('stream-toggle-button').disabled = !enabled;
   $('stream-toggle-button').setAttribute('aria-pressed', 'false');
   setText('stream-toggle-button', 'Start Live Stream');
   if (cameraBaseUrl) {
     $('camera-image').src = '';
     if (refreshSnapshot) refreshCameraImage();
+  } else {
+    $('camera-image').src = '/video_feed';
+    if (refreshSnapshot) $('camera-image').src = '/video_feed';
   }
 }
 
 function toggleCameraStream() {
-  if (!cameraBaseUrl) return;
+  const streamUrl = cameraBaseUrl ? `${cameraBaseUrl}/stream` : '/video_feed';
   if (cameraStreamActive) {
     stopCameraStream();
     return;
@@ -254,7 +258,7 @@ function toggleCameraStream() {
   cameraStreamActive = true;
   $('capture-button').disabled = true;
   $('refresh-image-button').disabled = true;
-  $('camera-image').src = `${cameraBaseUrl}/stream`;
+  $('camera-image').src = streamUrl;
   $('camera-image').hidden = false;
   $('camera-placeholder').hidden = true;
   $('stream-toggle-button').setAttribute('aria-pressed', 'true');

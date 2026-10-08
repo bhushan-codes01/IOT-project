@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 esp32/esp32_fire_monitor/secrets.h
+esp32/secrets.h
 data/logs/*
 .vscode/
 .idea/
