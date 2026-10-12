@@ -101,6 +101,11 @@ def create_app(state_store: StateStore | None = None) -> Flask:
         })
         return jsonify(payload)
 
+    @app.get("/api/camera/snapshot")
+    def camera_snapshot() -> Response:
+        frame_bytes, content_type = camera_manager.get_snapshot_jpeg()
+        return Response(frame_bytes, mimetype=content_type)
+
     @app.get("/video_feed")
     def video_feed() -> Response:
         return Response(camera_manager.generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")

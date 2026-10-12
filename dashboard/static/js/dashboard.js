@@ -198,8 +198,7 @@ function snapshotUrl() {
 function refreshCameraImage() {
   if (cameraStreamActive) return;
   setCameraState('CAPTURING IMAGE', 'unknown');
-  showCameraPlaceholder('Requesting the latest USB webcam frame...');
-  $('camera-image').src = cameraBaseUrl ? snapshotUrl() : '/video_feed';
+  $('camera-image').src = cameraBaseUrl ? snapshotUrl() : `/api/camera/snapshot?t=${Date.now()}`;
 }
 
 function configureCamera(status) {
@@ -224,8 +223,7 @@ function configureCamera(status) {
 
   if (changed || cameraRefreshTimer === null) {
     stopCameraStream(false);
-    showCameraPlaceholder('Waiting for the local USB webcam...');
-    setCameraState('WAITING FOR CAMERA', 'unknown');
+    setCameraState('READY', 'connected');
     if (cameraRefreshTimer !== null) window.clearInterval(cameraRefreshTimer);
     cameraRefreshTimer = window.setInterval(refreshCameraImage, cameraRefreshSeconds * 1000);
     refreshCameraImage();
@@ -240,12 +238,11 @@ function stopCameraStream(refreshSnapshot = true) {
   $('stream-toggle-button').disabled = !enabled;
   $('stream-toggle-button').setAttribute('aria-pressed', 'false');
   setText('stream-toggle-button', 'Start Live Stream');
-  if (cameraBaseUrl) {
-    $('camera-image').src = '';
-    if (refreshSnapshot) refreshCameraImage();
+  $('camera-image').src = '';
+  if (refreshSnapshot) {
+    refreshCameraImage();
   } else {
-    $('camera-image').src = '/video_feed';
-    if (refreshSnapshot) $('camera-image').src = '/video_feed';
+    showCameraPlaceholder('Live stream stopped.');
   }
 }
 
