@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from flask import Flask, Response, jsonify, render_template
+from flask import Flask, Response, jsonify, render_template, request
 
 from backend import network_monitor
 from backend.camera_manager import CameraManager
@@ -100,6 +100,20 @@ def create_app(state_store: StateStore | None = None) -> Flask:
             "person_detected": bool(state.snapshot().get("human_camera", payload.get("person_detected", False))),
         })
         return jsonify(payload)
+
+    @app.route("/api/camera/settings", methods=["GET", "POST"])
+    def camera_settings() -> Any:
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+            exposure = data.get("exposure")
+            if exposure == "auto" or (exposure is None and data.get("auto") is True):
+                camera_manager.set_exposure(None)
+            elif exposure is not None:
+                try:
+                    camera_manager.set_exposure(float(exposure))
+                except (ValueError, TypeError):
+                    return jsonify({"error": "Invalid exposure value"}), 400
+        return jsonify(camera_manager.get_settings())
 
     @app.get("/api/camera/snapshot")
     def camera_snapshot() -> Response:

@@ -17,6 +17,7 @@ CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "0"))
 YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n.pt")
 CAMERA_BASE_URL = os.getenv("CAMERA_BASE_URL", "").strip().rstrip("/")
 CAMERA_REFRESH_SECONDS = max(2, int(os.getenv("CAMERA_REFRESH_SECONDS", "5")))
+CAMERA_EXPOSURE = os.getenv("CAMERA_EXPOSURE", "").strip()
 FLASK_HOST = os.getenv("FLASK_HOST", "127.0.0.1")
 FLASK_PORT = int(os.getenv("FLASK_PORT", "5000"))
 LOG_DIR = PROJECT_ROOT / "data" / "logs"

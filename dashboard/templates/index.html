@@ -80,6 +80,16 @@
         <button class="camera-button" id="capture-button" type="button" disabled>Capture Image</button>
         <button class="camera-button" id="refresh-image-button" type="button" disabled>Refresh Image</button>
         <button class="camera-button" id="stream-toggle-button" type="button" disabled aria-pressed="false">Start Live Stream</button>
+        <label class="shutter-control" for="shutter-select">
+          <span>SHUTTER:</span>
+          <select id="shutter-select" class="camera-select" title="Adjust camera shutter speed / exposure">
+            <option value="-7">1/128s (Fast / Anti-Blur)</option>
+            <option value="-6" selected>1/64s (Balanced Crisp)</option>
+            <option value="-5">1/32s (Normal)</option>
+            <option value="-4">1/16s (Low Light)</option>
+            <option value="auto">Auto</option>
+          </select>
+        </label>
         <span class="camera-address" id="camera-address">CAMERA: NOT CONFIGURED</span>
       </div>
     </section>

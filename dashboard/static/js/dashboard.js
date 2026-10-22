@@ -210,6 +210,7 @@ function configureCamera(status) {
   $('capture-button').disabled = !configured;
   $('refresh-image-button').disabled = !configured;
   $('stream-toggle-button').disabled = !configured;
+  if ($('shutter-select')) $('shutter-select').disabled = !configured;
   setText('camera-address', configured ? (cameraBaseUrl ? `CAMERA: ${cameraBaseUrl}` : 'CAMERA: LOCAL USB WEBCAM') : 'CAMERA: NOT CONFIGURED');
 
   if (!configured) {
@@ -386,6 +387,25 @@ $('camera-image').addEventListener('error', () => {
 $('capture-button').addEventListener('click', refreshCameraImage);
 $('refresh-image-button').addEventListener('click', refreshCameraImage);
 $('stream-toggle-button').addEventListener('click', toggleCameraStream);
+
+const shutterSelect = $('shutter-select');
+if (shutterSelect) {
+  shutterSelect.addEventListener('change', async () => {
+    const val = shutterSelect.value;
+    try {
+      await fetch('/api/camera/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exposure: val === 'auto' ? 'auto' : parseFloat(val) }),
+      });
+      if (!cameraStreamActive) {
+        refreshCameraImage();
+      }
+    } catch (err) {
+      console.warn('Failed to update shutter settings', err);
+    }
+  });
+}
 
 async function refresh() {
   try {

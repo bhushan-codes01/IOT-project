@@ -92,6 +92,9 @@ button { color: inherit; }
 .camera-button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 2px; background: #0d1a10; color: var(--text); cursor: pointer; font: 10px var(--mono); }
 .camera-button:hover:not(:disabled), .camera-button[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
 .camera-button:disabled { cursor: not-allowed; opacity: .48; }
+.shutter-control { display: inline-flex; align-items: center; gap: 6px; font: 10px var(--mono); color: var(--muted); }
+.camera-select { min-height: 32px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 2px; background: #0d1a10; color: var(--green); font: 10px var(--mono); cursor: pointer; }
+.camera-select:focus { outline: none; border-color: var(--green); }
 .camera-address { min-width: 0; margin-left: auto; overflow: hidden; color: var(--quiet); font: 9px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .map-section { padding: 13px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg-2); }
 .map-header, .events-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
